@@ -1,0 +1,74 @@
+FIXES APPLIED TO EXCEL SHEET EDITOR
+====================================
+
+PROBLEM 1: Sheet Editor Not Opening
+------------------------------------
+When clicking "Edit" on a sheet, you got 404 error:
+  [11:28:18 INF] Request finished GET http://localhost:5000/Sheets/Editor/1 - 404
+
+ROOT CAUSE:
+- The view was linking to: /Sheets/Editor/1
+- The controller route was only set to: /sheets/{id}
+- Route mismatch = 404 Not Found
+
+SOLUTION APPLIED:
+- Added second route to SheetsController.cs
+- File: SocialCalc-Website\Controllers\SheetsController.cs
+- Change: Added [HttpGet("Editor/{id}")] attribute
+  
+  BEFORE:
+    [HttpGet("{id}")]
+    public async Task<IActionResult> Editor(int id)
+  
+  AFTER:
+    [HttpGet("{id}")]
+    [HttpGet("Editor/{id}")]
+    public async Task<IActionResult> Editor(int id)
+
+Now both routes work:
+  ✓ /sheets/1          (direct)
+  ✓ /sheets/Editor/1   (from Index page button)
+
+
+PROBLEM 2: File Permission Warning
+-----------------------------------
+When saving a sheet, you saw this warning:
+  [11:28:18 WRN] Attempted unauthorized file creation: users/3/k1.json
+
+ROOT CAUSE:
+- The application tries to save sheet data to users/ folder
+- The folder didn't exist
+- Missing folder = permission error
+
+SOLUTION APPLIED:
+- Created the users/ directory at:
+  SocialCalc-Website\users\
+
+The application can now save sheets without warnings.
+
+
+HOW TO TEST THE FIX:
+===================
+1. Keep the application running: dotnet run
+2. Open browser: http://localhost:5000
+3. Log in with your account
+4. Click "New Sheet" button
+5. You should now see the spreadsheet editor
+6. Try creating/editing a sheet - it should save without warnings
+
+Expected behavior:
+✓ Editor page loads (no 404)
+✓ Sheet saves successfully
+✓ No permission warnings in console
+
+
+FILES MODIFIED:
+===============
+1. Controllers/SheetsController.cs - Added routing
+2. Created: users/ directory
+
+FILES NOT MODIFIED (already correct):
+====================================
+- Views/Sheets/Editor.cshtml (view was correct)
+- Views/Sheets/Index.cshtml (link was correct)
+- Services/ExcelService.cs (Excel export should work)

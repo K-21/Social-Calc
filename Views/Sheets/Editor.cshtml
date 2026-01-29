@@ -1,0 +1,417 @@
+@model SocialCalc.Web.Models.Sheet
+
+@{
+    ViewData["Title"] = Model?.FileName ?? "Sheet Editor";
+}
+
+@section Styles {
+    <link rel="stylesheet" href="~/css/socialcalc.css" />
+}
+
+<div class="container-fluid">
+    <div class="row mb-3">
+        <div class="col">
+            <h1><i class="fas fa-table"></i> @(Model?.FileName ?? "New Sheet")</h1>
+        </div>
+        <div class="col-auto">
+            <button class="btn btn-success" id="btnSave">
+                <i class="fas fa-save"></i> Save
+            </button>
+            <a href="/Sheets" class="btn btn-secondary">
+                <i class="fas fa-arrow-left"></i> Back
+            </a>
+            <span id="saveStatus" class="ms-3 text-muted small" style="display:none;">
+                <span id="saveSpinner" class="spinner-border spinner-border-sm text-secondary visually-hidden" role="status" aria-hidden="true"></span>
+                <span id="saveStatusText"></span>
+            </span>
+        </div>
+    </div>
+
+    <!-- Toolbar -->
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="btn-group mb-2" role="group">
+                <button type="button" class="btn btn-outline-secondary" id="btnUndo">
+                    <i class="fas fa-undo"></i> Undo
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnRedo">
+                    <i class="fas fa-redo"></i> Redo
+                </button>
+            </div>
+            <div class="btn-group ms-2 mb-2" role="group">
+                <button type="button" class="btn btn-outline-secondary" id="btnBold">
+                    <i class="fas fa-bold"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnItalic">
+                    <i class="fas fa-italic"></i>
+                </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnUnderline">
+                    <i class="fas fa-underline"></i>
+                </button>
+            </div>
+            <div class="btn-group ms-2 mb-2" role="group">
+                <button type="button" class="btn btn-outline-secondary" id="btnExportPDF">
+                    <i class="fas fa-file-pdf"></i> PDF
+                </button>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                        <i class="fas fa-download"></i> Export
+                    </button>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="#" id="btnExportExcel">
+                            <i class="fas fa-file-excel"></i> Excel (.xlsx)
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" id="btnExportCsv">
+                            <i class="fas fa-file-csv"></i> CSV (.csv)
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" id="btnExportOds">
+                            <i class="fas fa-file-alt"></i> OpenDocument (.ods)
+                        </a></li>
+                        <li><a class="dropdown-item" href="#" id="btnExportHtml">
+                            <i class="fas fa-code"></i> HTML (.html)
+                        </a></li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- WorkbookControl - for sheet tabs (same as Python) -->
+    <div id="workbookControl" style="background-color:#80A9F3;">
+    </div>
+
+    <!-- Spreadsheet Container (same as Python's tableeditor div) -->
+    <div id="socialcalcContainer" style="width: 100%; height: 600px; border: 1px solid #ddd; margin: 8px 0px 10px 0px;">
+        <!-- SocialCalc will be loaded here -->
+    </div>
+
+    <!-- Hidden textarea with sheet data (same as Python version) -->
+    <textarea name="savestr" id="sheetdata" style="display:none;">
+@if (Model != null && !string.IsNullOrEmpty(Model.Data))
+{
+    @Html.Raw(Model.Data)
+}
+    </textarea>
+
+</div>
+
+<!-- Success Toast -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3">
+    <div id="saveSuccessToast" class="toast" role="alert" aria-live="assertive" aria-atomic="true">
+        <div class="toast-header bg-success text-white">
+            <i class="fas fa-check-circle me-2"></i>
+            <strong class="me-auto">Success</strong>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast"></button>
+        </div>
+        <div class="toast-body">
+            Sheet saved successfully! 
+            <div class="mt-2">
+                <a href="/Sheets" class="btn btn-sm btn-primary">
+                    <i class="fas fa-list"></i> View All Sheets
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <!-- SocialCalc Libraries - Load in correct order (same as Python importcollabload.html) -->
+    <script src="~/js/jquery.min.js"></script>
+    <script src="~/js/socialcalcconstants.js"></script>
+    <script src="~/js/socialcalc-3.js"></script>
+    <script src="~/js/socialcalctouch.js" onerror="/* socialcalctouch.js not found, continuing... */"></script>
+    <script src="~/js/socialcalctableeditor.js"></script>
+    <script src="~/js/formatnumber2.js" onerror="/* formatnumber2.js not found, continuing... */"></script>
+    <script src="~/js/formula1.js"></script>
+    <script src="~/js/socialcalcpopup.js" onerror="/* socialcalcpopup.js not found, continuing... */"></script>
+    <script src="~/js/socialcalcspreadsheetcontrol.js"></script>
+    <script src="~/js/socialcalcworkbook.js"></script>
+    <script src="~/js/socialcalcworkbookcontrol.js"></script>
+    <script src="~/js/socialcalcimages.js"></script>
+    <script src="~/js/json2.js" onerror="/* json2.js not found, continuing... */"></script>
+
+    <script>
+        // Wait for all scripts to load
+        @* console.log('Checking SocialCalc:', typeof SocialCalc);
+        // console logs removed for production (WorkBook checks omitted)
+         *@
+        const sheetId = @(Model?.Id ?? 0);
+        let spreadsheet;  // SpreadsheetControl
+        let workbook;     // WorkBook
+        let workbookcontrol; // WorkBookControl
+
+        document.addEventListener('DOMContentLoaded', function() {
+            try {
+                // Wait a bit for DOM to fully render before initializing
+                setTimeout(function() {
+                    const container = document.getElementById('socialcalcContainer');
+                  //  console.log('Container before init:', container.offsetWidth, 'x', container.offsetHeight);
+                    
+                    // Set image prefix like Python does
+                    SocialCalc.Constants.defaultImagePrefix = "/images/images/sc-";
+                    if (SocialCalc.Popup) {
+                        SocialCalc.Popup.imagePrefix = "/images/images/sc-";
+                    }
+                    
+                    // Initialize exactly like Python importcollabload.html:
+                    // 1. Create SpreadsheetControl
+                    spreadsheet = new SocialCalc.SpreadsheetControl();
+                  //  console.log('SpreadsheetControl created');
+                    
+                    // 2. Create WorkBook with the spreadsheet
+                    workbook = new SocialCalc.WorkBook(spreadsheet);
+                    workbook.InitializeWorkBook("sheet1");
+                   // console.log('WorkBook initialized');
+                    
+                    // 3. Initialize SpreadsheetControl to container
+                    spreadsheet.InitializeSpreadsheetControl("socialcalcContainer");
+                    spreadsheet.ExecuteCommand('redisplay', '');
+                 //   console.log('SpreadsheetControl initialized to container');
+                    
+                    // 4. Create WorkBookControl with workbook
+                    workbookcontrol = new SocialCalc.WorkBookControl(workbook, "workbookControl", "sheet1");
+                    workbookcontrol.InitializeWorkBookControl();
+                 //   console.log('WorkBookControl initialized');
+                    
+                    // 5. Load sheet data using WorkBookControlLoad (same as Python!)
+                    try {
+                        const sheetDataStr = document.getElementById('sheetdata').value;
+                      //  console.log('Loading sheet data from textarea, length:', sheetDataStr.length);
+                      //  console.log('First 200 chars:', sheetDataStr.substring(0, 200));
+                        
+                        if (sheetDataStr && sheetDataStr.trim().length > 0) {
+                            // Use WorkBookControlLoad like Python does - this handles 
+                            // both JSON workbook format (from Excel import) and 
+                            // SocialCalc save format
+                            SocialCalc.WorkBookControlLoad(sheetDataStr);
+                          //  console.log('Sheet data loaded via WorkBookControlLoad successfully');
+                        } else {
+                          //  console.log('Sheet data is empty, starting with blank sheet');
+                        }
+                    } catch (e) {
+                       // console.error('Error loading sheet data:', e);
+                       // console.error(e.stack);
+                    }
+                    
+                    // Trigger resize to ensure proper layout
+                    if (typeof spreadsheet.DoOnResize === 'function') {
+                        spreadsheet.DoOnResize();
+                    }
+                }, 100);
+            } catch (e) {
+             //   console.error('Error initializing spreadsheet:', e);
+              //  console.error(e.stack);
+            }
+        });
+
+        // Save Button - use WorkBookControlSaveSheet like Python
+        document.getElementById('btnSave').addEventListener('click', function() {
+            if (!spreadsheet) {
+                alert('Spreadsheet not initialized');
+                return;
+            }
+            
+            // Use WorkBookControlSaveSheet to save in workbook format (same as Python)
+            const sheetData = SocialCalc.WorkBookControlSaveSheet();
+            @* console.log('Data to save:', sheetData);
+            // data length log removed
+             *@
+            // Indicate manual save started
+            showSavingIndicator(true);
+
+            fetch(`/Sheets/Save/@(Model?.Id ?? 0)`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ data: sheetData })
+            })
+            .then(r => r.json())
+            .then(data => {
+             //   console.log('Save response:', data);
+                if (data.success) {
+                //    console.log('Save successful!');
+                    // Update autosave state
+                    lastSavedSnapshot = sheetData;
+                    unsavedChanges = false;
+                    showSavedIndicator();
+                    showSaveSuccessToast();
+                } else {
+                    console.error('Save failed:', data.message);
+                    alert('Error saving sheet: ' + data.message);
+                }
+            })
+            .catch(e => {
+                console.error('Save error:', e);
+                alert('Error: ' + e.message);
+            })
+            .finally(() => {
+                showSavingIndicator(false);
+            });
+        });
+
+        // Export PDF
+        document.getElementById('btnExportPDF').addEventListener('click', function() {
+            window.location.href = `/Sheets/Export-Pdf/@(Model?.Id ?? 0)`;
+        });
+
+        // Export Excel
+        document.getElementById('btnExportExcel').addEventListener('click', function() {
+            // console.log removed
+            window.location.href = `/Sheets/Export/@(Model?.Id ?? 0)`;
+        });
+
+        // Export CSV
+        document.getElementById('btnExportCsv').addEventListener('click', function() {
+            // console.log removed
+            window.location.href = `/Sheets/Export-Csv/@(Model?.Id ?? 0)`;
+        });
+
+        // Export ODS
+        document.getElementById('btnExportOds').addEventListener('click', function() {
+            // console.log removed
+            window.location.href = `/Sheets/Export-Format/@(Model?.Id ?? 0)/ods`;
+        });
+
+        // Export HTML
+        document.getElementById('btnExportHtml').addEventListener('click', function() {
+            // console.log removed
+            window.location.href = `/Sheets/Export-Format/@(Model?.Id ?? 0)/html`;
+        });
+
+        // Toast notification function
+        function showSaveSuccessToast() {
+            const toastEl = document.getElementById('saveSuccessToast');
+            const toast = new bootstrap.Toast(toastEl, {
+                autohide: false // Keep it visible until user dismisses or clicks the button
+            });
+            toast.show();
+            
+            // Set a flag that we just saved, so the sheets page can refresh automatically
+            localStorage.setItem('justSavedSheet', 'true');
+        }
+
+        // ----- Autosave Implementation -----
+        const AUTOSAVE_DEBOUNCE_MS = 1000; // 1s debounce for responsive autosave
+        let autosaveTimer = null;
+        let lastSavedSnapshot = document.getElementById('sheetdata')?.value || '';
+        let isSaving = false;
+        let unsavedChanges = false;
+
+        function showSavingIndicator(show) {
+            const status = document.getElementById('saveStatus');
+            const spinner = document.getElementById('saveSpinner');
+            const text = document.getElementById('saveStatusText');
+            if (!status || !spinner || !text) return;
+            if (show) {
+                spinner.classList.remove('visually-hidden');
+                text.textContent = 'Saving...';
+                status.style.display = 'inline-block';
+            } else {
+                spinner.classList.add('visually-hidden');
+            }
+        }
+
+        function showSavedIndicator() {
+            const status = document.getElementById('saveStatus');
+            const spinner = document.getElementById('saveSpinner');
+            const text = document.getElementById('saveStatusText');
+            if (!status || !spinner || !text) return;
+            spinner.classList.add('visually-hidden');
+            const now = new Date();
+            text.textContent = `Saved ✓ ${now.toLocaleTimeString()}`;
+            status.style.display = 'inline-block';
+            // hide after a few seconds
+            setTimeout(() => { status.style.display = 'none'; }, 4000);
+        }
+
+        function showSaveError(message) {
+            const status = document.getElementById('saveStatus');
+            const spinner = document.getElementById('saveSpinner');
+            const text = document.getElementById('saveStatusText');
+            if (!status || !spinner || !text) return;
+            spinner.classList.add('visually-hidden');
+            text.textContent = `Save failed: ${message}`;
+            status.style.display = 'inline-block';
+        }
+
+        function scheduleAutosave() {
+            unsavedChanges = true;
+            clearTimeout(autosaveTimer);
+            autosaveTimer = setTimeout(doAutosave, AUTOSAVE_DEBOUNCE_MS);
+        }
+
+        async function doAutosave() {
+            if (!spreadsheet) return;
+            if (isSaving) return; // avoid overlapping saves
+
+            const snapshot = SocialCalc.WorkBookControlSaveSheet();
+            if (snapshot === lastSavedSnapshot) {
+                // nothing changed
+                unsavedChanges = false;
+                return;
+            }
+
+            isSaving = true;
+            showSavingIndicator(true);
+            try {
+                const res = await fetch(`/Sheets/Save/${sheetId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ data: snapshot })
+                });
+                const json = await res.json();
+                if (json?.success) {
+                    lastSavedSnapshot = snapshot;
+                    unsavedChanges = false;
+                    showSavedIndicator();
+                    // keep existing behavior
+                    localStorage.setItem('justSavedSheet', 'true');
+                } else {
+                    showSaveError(json?.message || 'Unknown error');
+                }
+            } catch (e) {
+                showSaveError(e?.message || 'Network error');
+            } finally {
+                isSaving = false;
+                showSavingIndicator(false);
+            }
+        }
+
+        // Wire up autosave triggers
+        document.addEventListener('DOMContentLoaded', function() {
+            // try to detect user typing or interaction
+            const container = document.getElementById('socialcalcContainer');
+            if (container) {
+                container.addEventListener('input', scheduleAutosave);
+                container.addEventListener('mouseup', scheduleAutosave);
+                container.addEventListener('keyup', scheduleAutosave);
+            }
+
+            // Also bind global keyboard input (in case)
+            document.addEventListener('keyup', scheduleAutosave);
+
+            // Initialize lastSavedSnapshot from loaded document if available
+            try {
+                if (typeof SocialCalc?.WorkBookControlSaveSheet === 'function') {
+                    lastSavedSnapshot = SocialCalc.WorkBookControlSaveSheet();
+                }
+            } catch (e) {
+                console.warn('Could not initialize lastSavedSnapshot:', e);
+            }
+        });
+
+        // Try a final sendBeacon on page unload if there are unsaved changes
+        window.addEventListener('beforeunload', function (e) {
+            try {
+                if (isSaving) return;
+                if (!unsavedChanges) return;
+                const payload = JSON.stringify({ data: SocialCalc.WorkBookControlSaveSheet() });
+                const blob = new Blob([payload], { type: 'application/json' });
+                navigator.sendBeacon(`/Sheets/Save/${sheetId}`, blob);
+            } catch (err) {
+                // swallow errors - we don't want to block unload
+            }
+        });
+    </script>
+}

@@ -1,0 +1,87 @@
+@{
+    ViewData["Title"] = "Register";
+}
+
+<div class="row justify-content-center">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-lg">
+            <div class="card-body p-5">
+                <h2 class="card-title text-center mb-4">
+                    <i class="fas fa-user-plus"></i> Register
+                </h2>
+
+                @if (ViewData.ModelState.Values.Any(v => v.Errors.Any()))
+                {
+                    <div class="alert alert-danger" role="alert">
+                        @foreach (var modelState in ViewData.ModelState.Values)
+                        {
+                            @foreach (var error in modelState.Errors)
+                            {
+                                <p class="mb-0">@error.ErrorMessage</p>
+                            }
+                        }
+                    </div>
+                }
+
+                <form method="post" action="/register">
+                    <div class="mb-3">
+                        <label for="email" class="form-label">Email Address</label>
+                        <input type="email" class="form-control" id="email" name="email" required />
+                        <small class="text-muted">We'll never share your email with anyone else.</small>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="password" class="form-label">Password</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="password" name="password" required />
+                            <button type="button" class="btn btn-outline-secondary password-toggle" data-target="#password" aria-label="Show password"><i class="fa fa-eye"></i></button>
+                        </div>
+                        <small class="text-muted">At least 8 characters, 1 uppercase letter, and 1 number (e.g., MyPass123)</small>
+                    </div>
+
+                    <div class="mb-4">
+                        <label for="confirmPassword" class="form-label">Confirm Password</label>
+                        <div class="input-group">
+                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required />
+                            <button type="button" class="btn btn-outline-secondary password-toggle" data-target="#confirmPassword" aria-label="Show password"><i class="fa fa-eye"></i></button>
+                        </div>
+                        <small class="text-muted">Must match the password above</small>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100 mb-3">
+                        <i class="fas fa-user-plus"></i> Register
+                    </button>
+                </form>
+
+                <div class="text-center">
+                    <p class="text-muted">Already have an account? <a href="/login" class="text-decoration-none">Login here</a></p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+    (function(){
+        var toggles = document.querySelectorAll('.password-toggle');
+        toggles.forEach(function(btn){
+            btn.addEventListener('click', function(){
+                var target = document.querySelector(this.getAttribute('data-target'));
+                if (!target) return;
+                var icon = this.querySelector('i');
+                if (target.type === 'password') {
+                    target.type = 'text';
+                    if (icon) { icon.classList.remove('fa-eye'); icon.classList.add('fa-eye-slash'); }
+                    this.setAttribute('aria-label','Hide password');
+                } else {
+                    target.type = 'password';
+                    if (icon) { icon.classList.remove('fa-eye-slash'); icon.classList.add('fa-eye'); }
+                    this.setAttribute('aria-label','Show password');
+                }
+            });
+        });
+    })();
+    </script>
+}
+

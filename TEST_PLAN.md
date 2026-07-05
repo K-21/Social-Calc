@@ -1,4 +1,4 @@
-# 🚀 Social-Calc Deployment Test Plan
+#  Social-Calc Deployment Test Plan
 
 **Test Environment:**
 * **URL:** `http://51.20.72.142:5000`
@@ -85,7 +85,7 @@
 
 ---
 
-## Part 3: Security, Performance & Monitoring
+## Part 3: Security, Performance & Monitoring (WIP)
 
 ### Test Case 10: Security (SQL Injection & XSS Protection)
 * **Objective:** Verify the application and database are protected against malicious input.

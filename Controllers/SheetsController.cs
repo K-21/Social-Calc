@@ -387,8 +387,7 @@ public class SheetsController : Controller
             }
 
             var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.pdf";
-            var fileBytes = System.IO.File.ReadAllBytes(pdfPath);
-            return File(fileBytes, "application/pdf", fileName);
+            return File(pdfStream, "application/pdf", fileName);
         }
         catch (Exception ex)
         {

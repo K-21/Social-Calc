@@ -28,7 +28,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 // ===== Database Configuration =====
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString)
+    options.UseNpgsql(connectionString)
 );
 
 // ===== Identity Configuration =====

@@ -99,7 +99,11 @@ app.UseForwardedHeaders(forwardedHeadersOptions);
 
 app.Use((context, next) =>
 {
-    context.Request.Scheme = "https";
+    if (!app.Environment.IsDevelopment())
+    {
+        context.Request.Scheme = "https";
+        context.Request.Host = new HostString("social-calc.duckdns.org");
+    }
     return next();
 });
 

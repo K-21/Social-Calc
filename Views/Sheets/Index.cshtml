@@ -48,6 +48,10 @@
                                     <i class="fas fa-download"></i> Export
                                 </button>
                                 <ul class="dropdown-menu">
+                                    <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'gdrive')">
+                                        <i class="fab fa-google-drive text-success"></i> Save to Google Drive
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
                                     <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'xlsx')">
                                         <i class="fas fa-file-excel"></i> Excel (.xlsx)
                                     </a></li>
@@ -143,7 +147,9 @@
 
         function exportSheet(sheetId, format) {
             console.log('Export sheet:', sheetId, 'format:', format);
-            if (format) {
+            if (format === 'gdrive') {
+                window.location.href = `/sheets/export-gdrive/${sheetId}`;
+            } else if (format) {
                 console.log('Exporting to format:', format);
                 window.location.href = `/Sheets/Export-Format/${sheetId}/${format}`;
             } else {

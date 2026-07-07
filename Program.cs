@@ -45,6 +45,17 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
 
+// ===== External Authentication =====
+builder.Services.AddAuthentication()
+    .AddGoogle(options =>
+    {
+        options.ClientId = builder.Configuration["Authentication:Google:ClientId"] ?? "";
+        options.ClientSecret = builder.Configuration["Authentication:Google:ClientSecret"] ?? "";
+        options.SaveTokens = true; // Save the access token to the authentication cookie
+        options.Scope.Add("https://www.googleapis.com/auth/drive.file");
+        // We removed the manual prompt addition to fix the OAuth error
+    });
+
 // ===== Session Configuration =====
 builder.Services.AddSession(options =>
 {

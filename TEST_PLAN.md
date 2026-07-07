@@ -1,7 +1,7 @@
 #  Social-Calc Deployment Test Plan
 
 **Test Environment:**
-* **URL:** `http://51.20.72.142:5000`
+* **URL:** `https://social-calc.duckdns.org`
 * **Infrastructure:** AWS EC2 (Ubuntu 24.04 LTS), AWS Security Groups, Supabase PostgreSQL (Cloud Database)
 * **Demo Credentials:** `demo@example.com` / `DemoPass123`
 
@@ -41,7 +41,7 @@
   4. Refresh the page or navigate away and come back.
 * **Expected Result:** The sheet saves successfully to the database. Upon reloading, the data and formulas remain intact.
 
-### Test Case 5: Background Services & Interoperability (PHP Export)(WIP)
+### Test Case 5: Background Services & Interoperability (PHP Export)
 * **Objective:** Verify the internal background services (PHP CLI handlers) are configured with correct Linux paths and executing properly.
 * **Steps:**
   1. Open a saved spreadsheet.
@@ -71,7 +71,7 @@
 ### Test Case 8: Process Resilience (The "Crash Test")
 * **Objective:** Verify that the background process manager keeps the application alive.
 * **Steps:**
-  1. The Architect verifies the site is live at `http://51.20.72.142:5000`.
+  1. The Architect verifies the site is live at `https://social-calc.duckdns.org`.
   2. The Administrator logs into the EC2 instance via SSH.
   3. The Administrator purposefully closes the SSH terminal without stopping the app.
 * **Expected Result:** The Architect refreshes the page and verifies the website is still perfectly accessible, proving the application is successfully detached and running as a daemon/background task.
@@ -115,3 +115,11 @@
 * **Steps:**
   1. The Architect uses a tool like Postman or `curl` to send a POST request to the API, but manually fakes the `Origin` or `Host` header to pretend the request is coming from a malicious website (e.g., `evil-website.com`).
 * **Expected Result:** Depending on how strictly `AllowedHosts` is configured, the server should inspect the request and potentially reject it, preventing Cross-Site Request Forgery (CSRF).
+
+### Test Case 14: Google Drive Integration & OAuth Interoperability
+* **Objective:** Verify the application can successfully authenticate with Google and upload natively converted spreadsheets.
+* **Steps:**
+  1. Log into the application and open a saved spreadsheet.
+  2. Click the "Export" dropdown and select "Save to Google Drive".
+  3. Complete the Google OAuth login and consent screen.
+* **Expected Result:** The application successfully requests the `drive.file` scope, the internal PHP engine builds the Excel file, and the C# backend uploads it to Google Drive using the `application/vnd.google-apps.spreadsheet` MIME type, instantly creating a native Google Sheet.

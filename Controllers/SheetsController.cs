@@ -4,7 +4,11 @@ using Microsoft.AspNetCore.Mvc;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
 using System.Text.Json;
-
+using Microsoft.AspNetCore.Authentication;
+using Google.Apis.Auth.OAuth2;
+using Google.Apis.Drive.v3;
+using Google.Apis.Services;
+using GoogleFile = Google.Apis.Drive.v3.Data.File;
 namespace SocialCalc.Web.Controllers;
 
 [Authorize]
@@ -393,6 +397,75 @@ public class SheetsController : Controller
         {
             _logger.LogError($"Error exporting PDF: {ex.Message}");
             return StatusCode(500, "Error exporting PDF");
+        }
+    }
+
+    [HttpGet("export-gdrive/{id}")]
+    public async Task<IActionResult> ExportToGoogleDrive(int id)
+    {
+        try
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return Unauthorized();
+
+            // 1. Check if user is authenticated with Google and has a token
+            var authResult = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
+            if (!authResult.Succeeded)
+            {
+                // Challenge Google authentication, redirect back here when done
+                var properties = new AuthenticationProperties { RedirectUri = Url.Action("ExportToGoogleDrive", new { id }) };
+                return Challenge(properties, "Google");
+            }
+
+            var accessToken = authResult.Properties?.GetTokenValue("access_token");
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                // Force re-authentication if token is missing
+                var properties = new AuthenticationProperties { RedirectUri = Url.Action("ExportToGoogleDrive", new { id }) };
+                return Challenge(properties, "Google");
+            }
+
+            // 2. Get the sheet data as Excel stream
+            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            if (sheet == null) return NotFound();
+
+            var excelStream = await _excelService.ExportToExcelAsync(sheet);
+            if (excelStream == null) return StatusCode(500, "Error generating Excel file for export.");
+
+            // 3. Connect to Google Drive API
+            var credential = GoogleCredential.FromAccessToken(accessToken);
+            var driveService = new DriveService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "Social-Calc"
+            });
+
+            // 4. Upload and convert to native Google Sheet
+            var fileMetadata = new GoogleFile
+            {
+                Name = sheet.FileName,
+                MimeType = "application/vnd.google-apps.spreadsheet" // Auto-convert to Google Sheet
+            };
+
+            var request = driveService.Files.Create(fileMetadata, excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            request.Fields = "id, webViewLink";
+            var response = await request.UploadAsync();
+
+            if (response.Status == Google.Apis.Upload.UploadStatus.Failed)
+            {
+                _logger.LogError($"Google Drive upload failed: {response.Exception?.Message}");
+                return StatusCode(500, "Failed to upload to Google Drive.");
+            }
+
+            var uploadedFile = request.ResponseBody;
+            
+            // Redirect to the newly created Google Sheet
+            return Redirect(uploadedFile.WebViewLink);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error exporting to Google Drive: {ex.Message}");
+            return StatusCode(500, "Error exporting to Google Drive");
         }
     }
 }

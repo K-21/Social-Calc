@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using SocialCalc.Web.Data;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
+using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Serilog.Events;
 
@@ -86,6 +87,12 @@ builder.Services.AddHttpClient();
 builder.Services.AddControllersWithViews();
 
 var app = builder.Build();
+
+// ===== Reverse Proxy configuration (Nginx) =====
+app.UseForwardedHeaders(new ForwardedHeadersOptions
+{
+    ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+});
 
 // ===== Middleware Pipeline =====
 if (!app.Environment.IsDevelopment())

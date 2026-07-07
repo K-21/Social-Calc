@@ -89,9 +89,18 @@ builder.Services.AddControllersWithViews();
 var app = builder.Build();
 
 // ===== Reverse Proxy configuration (Nginx) =====
-app.UseForwardedHeaders(new ForwardedHeadersOptions
+var forwardedHeadersOptions = new ForwardedHeadersOptions
 {
     ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto
+};
+forwardedHeadersOptions.KnownNetworks.Clear();
+forwardedHeadersOptions.KnownProxies.Clear();
+app.UseForwardedHeaders(forwardedHeadersOptions);
+
+app.Use((context, next) =>
+{
+    context.Request.Scheme = "https";
+    return next();
 });
 
 // ===== Middleware Pipeline =====

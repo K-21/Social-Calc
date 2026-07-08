@@ -213,11 +213,11 @@ function _sheetnode_phpexcel_import_cell($workbook, $sheet, $cell, &$sc) {
     break;
   case PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_STRING:
     $text = $cell->getValue();
-    if ($text instanceof PHPExcel_RichText) {
+    if ($text instanceof \PhpOffice\PhpSpreadsheet\RichText\RichText) {
       $style = $sheet->getStyle($cell->getCoordinate());
       $defaultfont = $style->getFont();
       foreach ($text->getRichTextElements() as $element) {
-        $font = $element instanceof PHPExcel_RichText_Run ? $element->getFont() : $defaultfont;
+        $font = $element instanceof \PhpOffice\PhpSpreadsheet\RichText\Run ? $element->getFont() : $defaultfont;
         $cellData .= '<span style="' . _sheetnode_phpexcel_assembleCSS(_sheetnode_phpexcel_createCSSStyleFont($font)) . '">';
 
         if ($font->getSuperScript()) {
@@ -366,7 +366,7 @@ function _sheetnode_phpexcel_assembleCSS($pValue = array())
  * @param PHPExcel_Style_Font     $pStyle     PHPExcel_Style_Font
  * @return  array
  */
-function _sheetnode_phpexcel_createCSSStyleFont(PHPExcel_Style_Font $pStyle) {
+function _sheetnode_phpexcel_createCSSStyleFont(\PhpOffice\PhpSpreadsheet\Style\Font $pStyle) {
   // Construct CSS
   $css = array();
 
@@ -374,9 +374,9 @@ function _sheetnode_phpexcel_createCSSStyleFont(PHPExcel_Style_Font $pStyle) {
   if ($pStyle->getBold()) {
     $css['font-weight'] = 'bold';
   }
-  if ($pStyle->getUnderline() != PHPExcel_Style_Font::UNDERLINE_NONE && $pStyle->getStrikethrough()) {
+  if ($pStyle->getUnderline() != \PhpOffice\PhpSpreadsheet\Style\Font::UNDERLINE_NONE && $pStyle->getStrikethrough()) {
     $css['text-decoration'] = 'underline line-through';
-  } else if ($pStyle->getUnderline() != PHPExcel_Style_Font::UNDERLINE_NONE) {
+  } else if ($pStyle->getUnderline() != \PhpOffice\PhpSpreadsheet\Style\Font::UNDERLINE_NONE) {
     $css['text-decoration'] = 'underline';
   } else if ($pStyle->getStrikethrough()) {
     $css['text-decoration'] = 'line-through';
@@ -466,7 +466,7 @@ function _sheetnode_phpexcel_get_layout($style) {
   );
   $valignment = $valignments[$style->getAlignment()->getVertical()];
   $padding_left = $style->getAlignment()->getIndent();
-  $padding_left = empty($padding_left) ? '*' : PHPExcel_Shared_Drawing::pointsToPixels($padding_left) . 'px';
+  $padding_left = empty($padding_left) ? '*' : \PhpOffice\PhpSpreadsheet\Shared\Drawing::pointsToPixels($padding_left) . 'px';
   return 'padding:* * * '. $padding_left .';vertical-align:'. $valignment .';';
 }
 

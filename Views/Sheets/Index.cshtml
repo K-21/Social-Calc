@@ -175,7 +175,7 @@
                 console.log('Delete response data:', data);
                 if (data.success) {
                     console.log('Delete successful, reloading page');
-                    location.reload();
+                    window.location.href = window.location.pathname + '?t=' + Date.now();
                 } else {
                     alert('Error deleting sheet: ' + data.message);
                 }

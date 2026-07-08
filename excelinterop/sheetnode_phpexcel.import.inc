@@ -290,10 +290,14 @@ function _sheetnode_phpexcel_import_cell($workbook, $sheet, $cell, &$sc) {
       $styles[$hash]['color'] = _sheetnode_phpexcel_insert_hash($sc, 'color', $color);
     }
 
-    // Background color
-    $bgcolor = _sheetnode_phpexcel_get_color($style->getFill()->getStartColor());
-    if ($bgcolor) {
-      $styles[$hash]['bgcolor'] = _sheetnode_phpexcel_insert_hash($sc, 'color', $bgcolor);
+    // Background color - only read if fill is actually set (not NONE)
+    $fill = $style->getFill();
+    if ($fill->getFillType() !== \PhpOffice\PhpSpreadsheet\Style\Fill::FILL_NONE &&
+        $fill->getFillType() !== null) {
+      $bgcolor = _sheetnode_phpexcel_get_color($fill->getStartColor());
+      if ($bgcolor) {
+        $styles[$hash]['bgcolor'] = _sheetnode_phpexcel_insert_hash($sc, 'color', $bgcolor);
+      }
     }
 
     // Borders
@@ -478,7 +482,19 @@ function _sheetnode_phpexcel_get_valueformat($numberformat) {
 }
 
 function _sheetnode_phpexcel_get_color($color) {
-  $rgb = $color->getRGB();
-  return 'rgb(' . hexdec(substr($rgb, 0, 2)) .','. hexdec(substr($rgb, 2, 2)) .','. hexdec(substr($rgb, 4, 2)) .')';
-}
+  // Use getARGB() to handle modern Excel ARGB colors and theme colors
+  // ARGB format is 8 hex chars: AARRGGBB (e.g. FF4472C4)
+  $argb = $color->getARGB();
+  if (empty($argb)) return false;
 
+  // Strip alpha channel (first 2 chars) if full ARGB
+  $rgb = strlen($argb) === 8 ? substr($argb, 2) : $argb;
+
+  // Must be a valid 6-char hex color
+  if (strlen($rgb) !== 6 || !ctype_xdigit($rgb)) return false;
+
+  // Skip default/transparent colors that mean "no color set"
+  if (strtoupper($rgb) === '000000' && $argb === '00000000') return false;
+
+  return 'rgb(' . hexdec(substr($rgb, 0, 2)) .','. hexdec(substr($rgb, 2, 2)) .','. hexdec(substr($rgb, 4, 2)) . ')';
+}

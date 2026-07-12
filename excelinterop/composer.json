@@ -1,6 +1,9 @@
 {
+    "name": "social-calc/excelinterop",
+    "description": "Excel interoperability service for Social-Calc",
+    "license": "proprietary",
     "require": {
-        "phpoffice/phpspreadsheet": "5.8.0",
+        "phpoffice/phpspreadsheet": "^5.8.0",
         "tecnickcom/tcpdf": "^6.10"
     },
     "require-dev": {

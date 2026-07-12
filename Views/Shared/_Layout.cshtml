@@ -42,6 +42,7 @@
                                 <li><hr class="dropdown-divider"></li>
                                 <li>
                                     <form method="post" action="/logout" style="display: inline;">
+                                        @Html.AntiForgeryToken()
                                         <button type="submit" class="dropdown-item">Logout</button>
                                     </form>
                                 </li>

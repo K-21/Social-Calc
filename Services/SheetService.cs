@@ -1,21 +1,19 @@
 using SocialCalc.Web.Data;
 using SocialCalc.Web.Models;
+using Microsoft.EntityFrameworkCore;
 
 namespace SocialCalc.Web.Services;
 
 public class SheetService : ISheetService
 {
     private readonly ApplicationDbContext _context;
-    private readonly IStorageService _storageService;
     private readonly ILogger<SheetService> _logger;
 
     public SheetService(
         ApplicationDbContext context,
-        IStorageService storageService,
         ILogger<SheetService> logger)
     {
         _context = context;
-        _storageService = storageService;
         _logger = logger;
     }
 
@@ -35,9 +33,6 @@ public class SheetService : ISheetService
             _context.Sheets.Add(sheet);
             await _context.SaveChangesAsync();
 
-            // Also save to file system for backup
-            var filePath = $"users/{userId}/{fileName}.json";
-            await _storageService.CreateFileAsync(filePath, data);
 
             _logger.LogInformation($"Sheet saved: {fileName} for user {userId}");
             return sheet;
@@ -56,10 +51,6 @@ public class SheetService : ISheetService
             _context.Sheets.Update(sheet);
             await _context.SaveChangesAsync();
 
-            // Also update file system backup
-            var filePath = $"users/{sheet.UserId}/{sheet.FileName}.json";
-            await _storageService.CreateFileAsync(filePath, sheet.Data);
-
             _logger.LogInformation($"Sheet updated: {sheet.FileName} (ID: {sheet.Id})");
             return true;
         }
@@ -70,14 +61,16 @@ public class SheetService : ISheetService
         }
     }
 
-    public async Task<List<Sheet>> GetUserSheetsAsync(int userId)
+    public async Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 50)
     {
         try
         {
-            var sheets = _context.Sheets
+            var sheets = await _context.Sheets
                 .Where(s => s.UserId == userId && !s.IsDeleted)
                 .OrderByDescending(s => s.UpdatedAt)
-                .ToList();
+                .Skip((page - 1) * pageSize)
+                .Take(pageSize)
+                .ToListAsync();
 
             return sheets;
         }
@@ -88,12 +81,25 @@ public class SheetService : ISheetService
         }
     }
 
+    public async Task<int> GetTotalUserSheetsAsync(int userId)
+    {
+        try
+        {
+            return await _context.Sheets.CountAsync(s => s.UserId == userId && !s.IsDeleted);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error counting sheets for user {userId}: {ex.Message}");
+            return 0;
+        }
+    }
+
     public async Task<Sheet?> GetSheetAsync(int sheetId, int userId)
     {
         try
         {
-            var sheet = _context.Sheets
-                .FirstOrDefault(s => s.Id == sheetId && s.UserId == userId && !s.IsDeleted);
+            var sheet = await _context.Sheets
+                .FirstOrDefaultAsync(s => s.Id == sheetId && s.UserId == userId && !s.IsDeleted);
 
             return sheet;
         }
@@ -108,8 +114,8 @@ public class SheetService : ISheetService
     {
         try
         {
-            var sheet = _context.Sheets
-                .FirstOrDefault(s => s.Id == sheetId && !s.IsDeleted);
+            var sheet = await _context.Sheets
+                .FirstOrDefaultAsync(s => s.Id == sheetId && !s.IsDeleted);
 
             return sheet;
         }
@@ -134,17 +140,7 @@ public class SheetService : ISheetService
             _context.Sheets.Remove(sheet);
             await _context.SaveChangesAsync();
 
-            // Also try to delete the file backup if it exists
-            try
-            {
-                var filePath = $"users/{userId}/{sheet.FileName}.json";
-                // Note: StorageService might not have a delete method, so just log
-                _logger.LogInformation($"File backup at {filePath} should be cleaned up manually");
-            }
-            catch (Exception fileEx)
-            {
-                _logger.LogWarning($"Could not delete file backup: {fileEx.Message}");
-            }
+
 
             _logger.LogInformation($"Sheet permanently deleted: {sheetId} ({sheet.FileName}) for user {userId}");
             return true;
@@ -176,20 +172,8 @@ public class SheetService : ISheetService
         }
     }
 
-    public async Task<string> ExportToPDFAsync(Sheet sheet)
+    public Task<string> ExportToPDFAsync(Sheet sheet)
     {
-        try
-        {
-            // PDF export logic - to be implemented with SelectPdf or iTextSharp
-            var pdfPath = $"exports/{sheet.Id}_{DateTime.Now:yyyyMMddHHmmss}.pdf";
-            
-            _logger.LogInformation($"Sheet exported to PDF: {pdfPath}");
-            return pdfPath;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error exporting to PDF: {ex.Message}");
-            return string.Empty;
-        }
+        return Task.FromResult("Error: PDF Export is not yet available.");
     }
 }

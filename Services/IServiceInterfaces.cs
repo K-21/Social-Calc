@@ -15,18 +15,6 @@ public interface IAuthService
     Task UpdateLastLoginAsync(User user);
 }
 
-/// <summary>
-/// Storage service interface - replaces cloud/storage/
-/// </summary>
-public interface IStorageService
-{
-    Task<string?> GetFileAsync(string path);
-    Task<bool> CreateFileAsync(string path, string data);
-    Task<bool> UpdateFileAsync(string path, string data);
-    Task<bool> CreateDirectoryAsync(string path);
-    Task<bool> DeleteFileAsync(string path);
-    Task<List<string>> ListFilesAsync(string path);
-}
 
 /// <summary>
 /// Sheet service interface - handles sheet operations
@@ -35,7 +23,8 @@ public interface ISheetService
 {
     Task<Sheet?> SaveSheetAsync(int userId, string fileName, string data);
     Task<bool> UpdateSheetAsync(Sheet sheet);
-    Task<List<Sheet>> GetUserSheetsAsync(int userId);
+    Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 50);
+    Task<int> GetTotalUserSheetsAsync(int userId);
     Task<Sheet?> GetSheetAsync(int sheetId, int userId);
     Task<Sheet?> GetSheetByIdAsync(int sheetId);
     Task<bool> DeleteSheetAsync(int sheetId, int userId);

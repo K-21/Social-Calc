@@ -1,5 +1,5 @@
-using System.Net;
-using System.Net.Mail;
+using MimeKit;
+using MailKit.Net.Smtp;
 
 namespace SocialCalc.Web.Services;
 
@@ -20,26 +20,33 @@ public class EmailService : IEmailService
     {
         try
         {
-            var smtpServer = _configuration["Email:SmtpServer"];
+            var smtpServer = _configuration["Email:SmtpServer"] ?? "localhost";
             var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "25");
-            var fromEmail = _configuration["Email:From"];
+            var fromEmail = _configuration["Email:From"] ?? "noreply@socialcalc.local";
 
-            using (var client = new SmtpClient(smtpServer, smtpPort))
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress("Social Calc", fromEmail));
+            message.To.Add(new MailboxAddress("", email));
+            message.Subject = "Password Reset Request";
+
+            var builder = new BodyBuilder
             {
-                var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail),
-                    Subject = "Password Reset Request",
-                    Body = GeneratePasswordResetEmailBody(resetLink),
-                    IsBodyHtml = true
-                };
+                HtmlBody = GeneratePasswordResetEmailBody(resetLink)
+            };
+            message.Body = builder.ToMessageBody();
 
-                mailMessage.To.Add(email);
-
-                await client.SendMailAsync(mailMessage);
-                _logger.LogInformation($"Password reset email sent to: {email}");
-                return true;
+            using (var client = new SmtpClient())
+            {
+                // Accept all certs for development
+                client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                await client.ConnectAsync(smtpServer, smtpPort, MailKit.Security.SecureSocketOptions.Auto);
+                // No authentication in current config
+                await client.SendAsync(message);
+                await client.DisconnectAsync(true);
             }
+
+            _logger.LogInformation($"Password reset email sent to: {email}");
+            return true;
         }
         catch (Exception ex)
         {
@@ -52,26 +59,31 @@ public class EmailService : IEmailService
     {
         try
         {
-            var smtpServer = _configuration["Email:SmtpServer"];
+            var smtpServer = _configuration["Email:SmtpServer"] ?? "localhost";
             var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "25");
-            var fromEmail = _configuration["Email:From"];
+            var fromEmail = _configuration["Email:From"] ?? "noreply@socialcalc.local";
 
-            using (var client = new SmtpClient(smtpServer, smtpPort))
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress("Social Calc", fromEmail));
+            message.To.Add(new MailboxAddress("", email));
+            message.Subject = "Welcome to Social Calc";
+
+            var builder = new BodyBuilder
             {
-                var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail),
-                    Subject = "Welcome to Social Calc",
-                    Body = GenerateWelcomeEmailBody(userName),
-                    IsBodyHtml = true
-                };
+                HtmlBody = GenerateWelcomeEmailBody(userName)
+            };
+            message.Body = builder.ToMessageBody();
 
-                mailMessage.To.Add(email);
-
-                await client.SendMailAsync(mailMessage);
-                _logger.LogInformation($"Welcome email sent to: {email}");
-                return true;
+            using (var client = new SmtpClient())
+            {
+                client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                await client.ConnectAsync(smtpServer, smtpPort, MailKit.Security.SecureSocketOptions.Auto);
+                await client.SendAsync(message);
+                await client.DisconnectAsync(true);
             }
+
+            _logger.LogInformation($"Welcome email sent to: {email}");
+            return true;
         }
         catch (Exception ex)
         {
@@ -84,26 +96,31 @@ public class EmailService : IEmailService
     {
         try
         {
-            var smtpServer = _configuration["Email:SmtpServer"];
+            var smtpServer = _configuration["Email:SmtpServer"] ?? "localhost";
             var smtpPort = int.Parse(_configuration["Email:SmtpPort"] ?? "25");
-            var fromEmail = _configuration["Email:From"];
+            var fromEmail = _configuration["Email:From"] ?? "noreply@socialcalc.local";
 
-            using (var client = new SmtpClient(smtpServer, smtpPort))
+            var message = new MimeMessage();
+            message.From.Add(new MailboxAddress("Social Calc", fromEmail));
+            message.To.Add(new MailboxAddress("", email));
+            message.Subject = "Sheet Shared with You";
+
+            var builder = new BodyBuilder
             {
-                var mailMessage = new MailMessage
-                {
-                    From = new MailAddress(fromEmail),
-                    Subject = "Sheet Shared with You",
-                    Body = GenerateSheetSharedEmailBody(sheetName),
-                    IsBodyHtml = true
-                };
+                HtmlBody = GenerateSheetSharedEmailBody(sheetName)
+            };
+            message.Body = builder.ToMessageBody();
 
-                mailMessage.To.Add(email);
-
-                await client.SendMailAsync(mailMessage);
-                _logger.LogInformation($"Sheet shared notification sent to: {email}");
-                return true;
+            using (var client = new SmtpClient())
+            {
+                client.ServerCertificateValidationCallback = (s, c, h, e) => true;
+                await client.ConnectAsync(smtpServer, smtpPort, MailKit.Security.SecureSocketOptions.Auto);
+                await client.SendAsync(message);
+                await client.DisconnectAsync(true);
             }
+
+            _logger.LogInformation($"Sheet shared notification sent to: {email}");
+            return true;
         }
         catch (Exception ex)
         {

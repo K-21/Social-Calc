@@ -1,5 +1,6 @@
 <?php
-
+ini_set('memory_limit', '128M');
+set_time_limit(30);
 require 'vendor/autoload.php'; // Composer autoload
 
 use PhpOffice\PhpSpreadsheet\IOFactory;
@@ -8,6 +9,7 @@ require_once __DIR__ . '/socialcalc.inc';
 require_once __DIR__ . '/sheetnode_phpexcel.import.inc';
 
 $inputFile = null;
+$isTempFile = false;
 
 // Support CLI usage (php import.php <filename>) and HTTP uploads
 if (php_sapi_name() === 'cli') {
@@ -23,7 +25,7 @@ if (php_sapi_name() === 'cli') {
 
     if ($fieldName) {
         $tmpName = $_FILES[$fieldName]['tmp_name'];
-        $origName = basename($_FILES[$fieldName]['name']);
+        $origName = uniqid('', true) . '.tmp';
         $targetDir = __DIR__ . '/tmp';
         if (!is_dir($targetDir)) {
             mkdir($targetDir, 0755, true);
@@ -36,6 +38,7 @@ if (php_sapi_name() === 'cli') {
             exit;
         }
         $inputFile = $targetPath;
+        $isTempFile = true;
     } elseif (isset($_POST['path'])) {
         // Allow posting an existing server path
         $inputFile = $_POST['path'];
@@ -90,6 +93,10 @@ try {
 
     $json = json_encode($book);
 
+    if ($isTempFile && !empty($inputFile) && file_exists($inputFile)) {
+        @unlink($inputFile);
+    }
+
     if (php_sapi_name() === 'cli') {
         // Preserve original CLI output format
         echo "$---$";
@@ -99,6 +106,9 @@ try {
         echo $json;
     }
 } catch (Throwable $e) {
+    if ($isTempFile && !empty($inputFile) && file_exists($inputFile)) {
+        @unlink($inputFile);
+    }
     if (php_sapi_name() === 'cli') {
         fwrite(STDERR, "Error processing file: " . $e->getMessage() . "\n");
         exit(1);

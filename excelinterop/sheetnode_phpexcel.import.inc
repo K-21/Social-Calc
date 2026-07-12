@@ -159,8 +159,12 @@ function _sheetnode_phpexcel_import_do($workbook, $sheet) {
       if (!$sheet->getColumnDimension($ca)->getVisible()) {
         $sc['colattribs']['hide'][$c] = TRUE;
       }
-      
-      _sheetnode_phpexcel_import_cell($workbook, $sheet, $cell, $sc);
+      try {
+        _sheetnode_phpexcel_import_cell($workbook, $sheet, $cell, $sc);
+      } catch (Throwable $e) {
+        error_log("Failed to import cell {$ca}{$row->getRowIndex()}: " . $e->getMessage());
+        // Skip corrupted cell gracefully
+      }
     }
   }
 
@@ -495,6 +499,9 @@ function _sheetnode_phpexcel_get_color($color) {
 
   // Skip default/transparent colors that mean "no color set"
   if (strtoupper($rgb) === '000000' && $argb === '00000000') return false;
+
+  // Skip default white background (FFFFFFFF)
+  if (strtoupper($rgb) === 'FFFFFF' && strtoupper($argb) === 'FFFFFFFF') return false;
 
   return 'rgb(' . hexdec(substr($rgb, 0, 2)) .','. hexdec(substr($rgb, 2, 2)) .','. hexdec(substr($rgb, 4, 2)) . ')';
 }

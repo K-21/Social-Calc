@@ -19,21 +19,24 @@ public class SheetsController : Controller
     private readonly IExcelService _excelService;
     private readonly UserManager<User> _userManager;
     private readonly ILogger<SheetsController> _logger;
+    private readonly IConfiguration _configuration;
 
     public SheetsController(
         ISheetService sheetService,
         IExcelService excelService,
         UserManager<User> userManager,
-        ILogger<SheetsController> logger)
+        ILogger<SheetsController> logger,
+        IConfiguration configuration)
     {
         _sheetService = sheetService;
         _excelService = excelService;
         _userManager = userManager;
         _logger = logger;
+        _configuration = configuration;
     }
 
     [HttpGet("")]
-    public async Task<IActionResult> Index()
+    public async Task<IActionResult> Index(int page = 1)
     {
         try
         {
@@ -43,7 +46,13 @@ public class SheetsController : Controller
                 return RedirectToAction("Login", "Auth");
             }
 
-            var sheets = await _sheetService.GetUserSheetsAsync(user.Id);
+            int pageSize = _configuration.GetValue<int>("AppSettings:DashboardPageSize", 10);
+            var totalSheets = await _sheetService.GetTotalUserSheetsAsync(user.Id);
+            var sheets = await _sheetService.GetUserSheetsAsync(user.Id, page, pageSize);
+
+            ViewBag.CurrentPage = page;
+            ViewBag.TotalPages = (int)Math.Ceiling((double)totalSheets / pageSize);
+            
             return View(sheets);
         }
         catch (Exception ex)
@@ -81,6 +90,7 @@ public class SheetsController : Controller
     }
 
     [HttpPost("save/{id}")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Save(int id, [FromBody] SaveSheetRequest request)
     {
         try
@@ -99,7 +109,6 @@ public class SheetsController : Controller
 
             // Log what we received
             _logger.LogInformation($"Save request received. Data length: {request.Data?.Length ?? 0}");
-            _logger.LogInformation($"Data preview (first 500 chars): {request.Data?.Substring(0, Math.Min(500, request.Data?.Length ?? 0))}");
 
             // Data is already a string from JavaScript, no need to serialize again
             sheet.Data = request.Data ?? "";
@@ -126,6 +135,7 @@ public class SheetsController : Controller
     }
 
     [HttpPost("create")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Create([FromBody] CreateSheetRequest request)
     {
         try
@@ -151,7 +161,50 @@ public class SheetsController : Controller
         }
     }
 
+    [HttpPost("Rename/{id}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> Rename(int id, [FromBody] RenameSheetRequest request)
+    {
+        try
+        {
+            var user = await _userManager.GetUserAsync(User);
+            if (user == null) return Unauthorized();
+
+            if (string.IsNullOrWhiteSpace(request?.FileName))
+            {
+                return BadRequest(new { success = false, message = "Filename is required" });
+            }
+            
+            var sanitizedFileName = System.Text.RegularExpressions.Regex.Replace(request.FileName, @"[^a-zA-Z0-9 _\-\.]", "");
+            if (string.IsNullOrWhiteSpace(sanitizedFileName))
+            {
+                return BadRequest(new { success = false, message = "Invalid filename" });
+            }
+
+            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            if (sheet == null) return NotFound();
+
+            sheet.FileName = sanitizedFileName;
+            sheet.UpdatedAt = DateTime.UtcNow;
+            
+            var success = await _sheetService.UpdateSheetAsync(sheet);
+            
+            if (success)
+            {
+                return Ok(new { success = true, fileName = sheet.FileName });
+            }
+            
+            return StatusCode(500, new { success = false, message = "Failed to rename sheet" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Error renaming sheet {id}: {ex.Message}");
+            return StatusCode(500, new { success = false, message = "Server error" });
+        }
+    }
+
     [HttpPost("delete/{id}")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(int id)
     {
         _logger.LogInformation($"Delete request received for sheet ID: {id}");
@@ -183,6 +236,7 @@ public class SheetsController : Controller
     }
 
     [HttpPost("import")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Import([FromForm] IFormFile file)
     {
         try
@@ -337,34 +391,6 @@ public class SheetsController : Controller
         }
     }
 
-    // Dev-only endpoint: export without authentication (for local testing)
-    [AllowAnonymous]
-    [HttpGet("export-noauth/{id}")]
-    public async Task<IActionResult> ExportNoAuth(int id)
-    {
-        try
-        {
-            var sheet = await _sheetService.GetSheetByIdAsync(id);
-            if (sheet == null)
-            {
-                return NotFound();
-            }
-
-            var excelStream = await _excelService.ExportToExcelAsync(sheet);
-            if (excelStream == null)
-            {
-                return StatusCode(500, "Error exporting sheet");
-            }
-
-            var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
-            return File(excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error exporting sheet (noauth): {ex.Message}");
-            return StatusCode(500, "Error exporting sheet");
-        }
-    }
 
     [HttpGet("export-pdf/{id}")]
     public async Task<IActionResult> ExportPdf(int id)
@@ -473,7 +499,12 @@ public class SheetsController : Controller
 // Request DTOs
 public class SaveSheetRequest
 {
-    public string Data { get; set; } = "";
+    public string Data { get; set; } = null!;
+}
+
+public class RenameSheetRequest
+{
+    public string FileName { get; set; } = null!;
 }
 
 public class CreateSheetRequest

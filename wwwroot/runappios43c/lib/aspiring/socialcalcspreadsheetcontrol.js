@@ -1732,9 +1732,9 @@ SocialCalc.DoCmd = function(obj, which) {
          defaultcolor = sheet.attribs.defaultcolor ? sheet.colors[sheet.attribs.defaultcolor] : "rgb(0,0,0)";
          defaultbgcolor = sheet.attribs.defaultbgcolor ? sheet.colors[sheet.attribs.defaultbgcolor] : "rgb(255,255,255)";
          color = cell.color ? sheet.colors[cell.color] : defaultcolor; // get color
-         if (color == defaultbgcolor) color = ""; // going to swap, so if same as background default, use default
+         if (color == defaultcolor) color = ""; // going to swap, so if same as foreground default, use default
          bgcolor = cell.bgcolor ? sheet.colors[cell.bgcolor] : defaultbgcolor;
-         if (bgcolor == defaultcolor) bgcolor = ""; // going to swap, so if same as foreground default, use default
+         if (bgcolor == defaultbgcolor) bgcolor = ""; // going to swap, so if same as background default, use default
          spreadsheet.ExecuteCommand("set %C color "+bgcolor+"%Nset %C bgcolor "+color, "");
          break;
 

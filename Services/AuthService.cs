@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Identity;
 using SocialCalc.Web.Data;
 using SocialCalc.Web.Models;
 using System.Security.Cryptography;
+using Microsoft.EntityFrameworkCore;
 
 namespace SocialCalc.Web.Services;
 
@@ -136,8 +137,8 @@ public class AuthService : IAuthService
     {
         try
         {
-            var resetToken = _context.PasswordResetTokens
-                .FirstOrDefault(t => t.Token == token && !t.IsUsed && t.ExpiresAt > DateTime.UtcNow);
+            var resetToken = await _context.PasswordResetTokens
+                .FirstOrDefaultAsync(t => t.Token == token && !t.IsUsed && t.ExpiresAt > DateTime.UtcNow);
 
             if (resetToken == null)
             {
@@ -159,8 +160,18 @@ public class AuthService : IAuthService
                 return false;
             }
 
-            resetToken.IsUsed = true;
-            _context.PasswordResetTokens.Update(resetToken);
+            // Clean up used token and any other expired tokens
+            _context.PasswordResetTokens.Remove(resetToken);
+            
+            var expiredTokens = await _context.PasswordResetTokens
+                .Where(t => t.ExpiresAt <= DateTime.UtcNow || t.IsUsed)
+                .ToListAsync();
+                
+            if (expiredTokens.Any())
+            {
+                _context.PasswordResetTokens.RemoveRange(expiredTokens);
+            }
+            
             await _context.SaveChangesAsync();
 
             _logger.LogInformation($"Password reset successful for user: {user.Email}");

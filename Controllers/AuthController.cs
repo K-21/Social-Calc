@@ -5,6 +5,7 @@ using Microsoft.AspNetCore.Mvc;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
 using System.Security.Claims;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace SocialCalc.Web.Controllers;
 
@@ -54,6 +55,8 @@ public class AuthController : Controller
     }
 
     [HttpPost("/login")]
+    [EnableRateLimiting("AuthPolicy")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Login(string email, string password)
     {
         try
@@ -90,6 +93,8 @@ public class AuthController : Controller
     }
 
     [HttpPost("/register")]
+    [EnableRateLimiting("AuthPolicy")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Register(string email, string password, string confirmPassword)
     {
         try
@@ -147,8 +152,9 @@ public class AuthController : Controller
         }
     }
 
-    [HttpGet("/logout")]
+
     [HttpPost("/logout")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout()
     {
         await _signInManager.SignOutAsync();
@@ -163,6 +169,8 @@ public class AuthController : Controller
     }
 
     [HttpPost("/lostpw")]
+    [EnableRateLimiting("AuthPolicy")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ForgotPassword(string email)
     {
         try
@@ -203,6 +211,8 @@ public class AuthController : Controller
     }
 
     [HttpPost("/pwreset")]
+    [EnableRateLimiting("AuthPolicy")]
+    [ValidateAntiForgeryToken]
     public async Task<IActionResult> ResetPassword(string token, string email, string password, string confirmPassword)
     {
         try
@@ -231,10 +241,4 @@ public class AuthController : Controller
         }
     }
 
-    [HttpGet("/confirmemail")]
-    public async Task<IActionResult> ConfirmEmail(string token, string userId)
-    {
-        // Email confirmation logic
-        return View();
-    }
 }

@@ -33,6 +33,7 @@ public class Sheet
     public string FileName { get; set; } = null!;
 
     [Required]
+    [MaxLength(5242880)]
     public string Data { get; set; } = "{}"; // JSON format
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;

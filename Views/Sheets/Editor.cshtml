@@ -8,7 +8,8 @@
     <link rel="stylesheet" href="~/css/socialcalc.css" />
 }
 
-<div class="container-fluid">
+<div class="container-fluid h-100 d-flex flex-column">
+    @Html.AntiForgeryToken()
     <div class="row mb-3">
         <div class="col">
             <h1><i class="fas fa-table"></i> @(Model?.FileName ?? "New Sheet")</h1>
@@ -93,7 +94,7 @@
     <textarea name="savestr" id="sheetdata" style="display:none;">
 @if (Model != null && !string.IsNullOrEmpty(Model.Data))
 {
-    @Html.Raw(Model.Data)
+    @Model.Data
 }
     </textarea>
 
@@ -152,9 +153,9 @@
                   //  console.log('Container before init:', container.offsetWidth, 'x', container.offsetHeight);
                     
                     // Set image prefix like Python does
-                    SocialCalc.Constants.defaultImagePrefix = "/images/images/sc-";
+                    SocialCalc.Constants.defaultImagePrefix = "/images/sc-";
                     if (SocialCalc.Popup) {
-                        SocialCalc.Popup.imagePrefix = "/images/images/sc-";
+                        SocialCalc.Popup.imagePrefix = "/images/sc-";
                     }
                     
                     // Initialize exactly like Python importcollabload.html:
@@ -227,6 +228,7 @@
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
+                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
                 },
                 body: JSON.stringify({ data: sheetData })
             })
@@ -301,7 +303,7 @@
         }
 
         // ----- Autosave Implementation -----
-        const AUTOSAVE_DEBOUNCE_MS = 1000; // 1s debounce for responsive autosave
+        const AUTOSAVE_DEBOUNCE_MS = 3000; // 3s debounce for responsive autosave
         let autosaveTimer = null;
         let lastSavedSnapshot = document.getElementById('sheetdata')?.value || '';
         let isSaving = false;
@@ -366,7 +368,10 @@
             try {
                 const res = await fetch(`/Sheets/Save/${sheetId}`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
                     body: JSON.stringify({ data: snapshot })
                 });
                 const json = await res.json();
@@ -412,15 +417,7 @@
 
         // Try a final sendBeacon on page unload if there are unsaved changes
         window.addEventListener('beforeunload', function (e) {
-            try {
-                if (isSaving) return;
-                if (!unsavedChanges) return;
-                const payload = JSON.stringify({ data: SocialCalc.WorkBookControlSaveSheet() });
-                const blob = new Blob([payload], { type: 'application/json' });
-                navigator.sendBeacon(`/Sheets/Save/${sheetId}`, blob);
-            } catch (err) {
-                // swallow errors - we don't want to block unload
-            }
+            // sendBeacon removed as it bypasses CSRF and autosave handles this already.
         });
     </script>
 }

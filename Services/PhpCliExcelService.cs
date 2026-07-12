@@ -50,9 +50,7 @@ public class PhpCliExcelService : IExcelService
 
         try
         {
-            // Debug: log the data being exported
-            var dataPreview = sheet.Data?.Length > 500 ? sheet.Data.Substring(0, 500) : sheet.Data;
-            _logger.LogInformation($"Export: Writing data to {inputFile}. Length={sheet.Data?.Length ?? 0}. Preview: {dataPreview}");
+            _logger.LogInformation($"Export: Writing data for sheet {sheet.FileName}. Length={sheet.Data?.Length ?? 0}");
             
             // Use UTF8 without BOM - important for PHP json_decode to work correctly
             var utf8NoBom = new UTF8Encoding(false);
@@ -78,7 +76,12 @@ public class PhpCliExcelService : IExcelService
             var outputTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
 
-            if (!proc.WaitForExit(timeoutSeconds * 1000))
+            var cts = new CancellationTokenSource(timeoutSeconds * 1000);
+            try
+            {
+                await proc.WaitForExitAsync(cts.Token);
+            }
+            catch (TaskCanceledException)
             {
                 try { proc.Kill(); } catch { }
                 _logger.LogError("PHP export process timed out");
@@ -90,7 +93,7 @@ public class PhpCliExcelService : IExcelService
 
             if (proc.ExitCode != 0)
             {
-                _logger.LogError($"PHP export failed exitcode={proc.ExitCode} stdout={stdout} stderr={stderr}");
+                _logger.LogError($"PHP export failed for User {sheet.UserId}, file {sheet.FileName}. ExitCode: {proc.ExitCode}, Stderr: {stderr}");
                 return null;
             }
 
@@ -162,7 +165,12 @@ public class PhpCliExcelService : IExcelService
             var outputTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
 
-            if (!proc.WaitForExit(timeoutSeconds * 1000))
+            var cts = new CancellationTokenSource(timeoutSeconds * 1000);
+            try
+            {
+                await proc.WaitForExitAsync(cts.Token);
+            }
+            catch (TaskCanceledException)
             {
                 try { proc.Kill(); } catch { }
                 _logger.LogError("PHP import process timed out");
@@ -174,7 +182,7 @@ public class PhpCliExcelService : IExcelService
 
             if (proc.ExitCode != 0)
             {
-                _logger.LogError($"PHP import failed exitcode={proc.ExitCode} stdout={stdout} stderr={stderr}");
+                _logger.LogError($"PHP import failed for User {userId}, file {fileName}. ExitCode: {proc.ExitCode}, Stderr: {stderr}");
                 return null;
             }
 
@@ -216,9 +224,13 @@ public class PhpCliExcelService : IExcelService
 
             var isXlsx = buffer[0] == 0x50 && buffer[1] == 0x4B;
             var isXls = buffer[0] == 0xD0 && buffer[1] == 0xCF;
+            var isOds = buffer[0] == 0x50 && buffer[1] == 0x4B; // ODS is a ZIP format too
+            
+            // For CSV we just accept it if it's not a known binary format but doesn't have 0x00 bytes
+            var isCsv = buffer[0] != 0x00 && buffer[1] != 0x00;
 
             fileStream.Seek(0, SeekOrigin.Begin);
-            return isXlsx || isXls;
+            return isXlsx || isXls || isOds || isCsv;
         }
         catch (Exception ex)
         {

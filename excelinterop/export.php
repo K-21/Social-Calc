@@ -1,5 +1,6 @@
 <?php
-
+ini_set('memory_limit', '128M');
+set_time_limit(30);
 require 'vendor/autoload.php'; // Composer autoload
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
@@ -9,18 +10,33 @@ require_once __DIR__ . '/socialcalc.inc';
 require_once __DIR__ . '/sheetnode_phpexcel.export.inc';
 
 // Read the tmp file
-$fname = $argv[1];
-$outfile = $argv[2];
-$outfiletype = $argv[3];
+$fname = $argv[1] ?? '';
+$outfile = $argv[2] ?? '';
+$outfiletype = $argv[3] ?? 'Xlsx';
+
+$tmpDir = realpath(__DIR__ . '/tmp');
+if (!$tmpDir) {
+    error_log("tmp directory not found");
+    exit(1);
+}
+
+// Validate that input and output are within tmp directory
+if (empty($fname) || strpos(realpath(dirname($fname)), $tmpDir) !== 0) {
+    error_log("Invalid input file path");
+    exit(1);
+}
+if (empty($outfile) || strpos(realpath(dirname($outfile)), $tmpDir) !== 0) {
+    error_log("Invalid output file path");
+    exit(1);
+}
+
+try {
 
 $fh = fopen($fname, "r");
 $data = fread($fh, filesize($fname));
 fclose($fh);
 
-// Debug: log input data length and first 500 chars
-error_log("Export input file: $fname");
-error_log("Export input data length: " . strlen($data));
-error_log("Export input data preview: " . substr($data, 0, 500));
+
 
 $book = json_decode($data);
 
@@ -67,4 +83,8 @@ $workbook->setActiveSheetIndex($actualactiveindex);
 $objWriter = IOFactory::createWriter($workbook, $outfiletype);
 $objWriter->save($outfile);
 
+} catch (Throwable $e) {
+    error_log("Export error: " . $e->getMessage());
+    exit(1);
+}
 ?>

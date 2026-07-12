@@ -60,11 +60,13 @@ function _sheetnode_phpexcel_export_do($workbook, $title, $sc) {
       if (!empty($scf['size'])) $font->setSize(floatval($scf['size']));
       if (!empty($scf['bold'])) $font->setBold(true);
       if (!empty($scf['italic'])) $font->setItalic(true);
-      if (!empty($c['color'])) {
-        $scc = socialcalc_cellformat_parsecolor($c, $sc, 'color');
-        $rgb = sprintf('%02X%02X%02X', $scc['r'], $scc['g'], $scc['b']);
-        $font->getColor()->setRGB($rgb);
-      }
+    }
+    
+    // Text Color
+    if (!empty($c['color'])) {
+      $scc = socialcalc_cellformat_parsecolor($c, $sc, 'color');
+      $rgb = sprintf('%02X%02X%02X', $scc['r'], $scc['g'], $scc['b']);
+      $style->getFont()->getColor()->setRGB($rgb);
     }
 
     // Borders
@@ -211,6 +213,12 @@ function _sheetnode_phpexcel_export_cell_value_and_format($c, $coord, $sc, $work
   $valuetype = substr($c['valuetype'], 0, 1);
   $valuesubtype = substr($c['valuetype'], 1);
   $displayvalue = $c['datavalue'];
+
+  // CSV Injection Protection: Prefix strings starting with =, +, -, or @ with a single quote
+  if ($valuetype == 't' && is_string($displayvalue) && preg_match('/^[=+\-@]/', $displayvalue)) {
+      $displayvalue = "'" . $displayvalue;
+  }
+
   $valueformat = NULL;
   
   // Error.

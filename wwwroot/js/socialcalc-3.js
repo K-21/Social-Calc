@@ -3028,7 +3028,7 @@ SocialCalc.GetStyleNum = function(sheet, atype, style) {
    if (style.length==0) return 0; // null means use zero, which means default or global default
 
    num = sheet[atype+"hash"][style];
-   if (!num) {
+   if (typeof num === "undefined") {
       if (sheet[atype+"s"].length<1) sheet[atype+"s"].push("");
       num = sheet[atype+"s"].push(style) - 1;
       sheet[atype+"hash"][style] = num;
@@ -5577,11 +5577,11 @@ SocialCalc.ConvertSaveToOtherFormat = function(savestr, outputformat, dorecalc) 
       div = document.createElement("div");
       ele = context.RenderSheet(null, context.defaultHTMLlinkstyle);
       div.appendChild(ele);
-      delete context;
-      delete sheet;
+      context = null;
+      sheet = null;
       result = div.innerHTML;
-      delete ele;
-      delete div;
+      ele = null;
+      div = null;
       return result;
       }
 

@@ -6,6 +6,9 @@ using SocialCalc.Web.Services;
 using Microsoft.AspNetCore.HttpOverrides;
 using Serilog;
 using Serilog.Events;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
+using Microsoft.AspNetCore.Http.Features;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -41,7 +44,7 @@ builder.Services.AddIdentity<User, IdentityRole<int>>(options =>
     options.Password.RequireUppercase = true;
     options.Password.RequireLowercase = true;
     options.User.RequireUniqueEmail = true;
-    options.SignIn.RequireConfirmedEmail = true;
+    options.SignIn.RequireConfirmedEmail = false;
 })
 .AddEntityFrameworkStores<ApplicationDbContext>()
 .AddDefaultTokenProviders();
@@ -57,17 +60,11 @@ builder.Services.AddAuthentication()
         // We removed the manual prompt addition to fix the OAuth error
     });
 
-// ===== Session Configuration =====
-builder.Services.AddSession(options =>
-{
-    options.IdleTimeout = TimeSpan.FromMinutes(30);
-    options.Cookie.HttpOnly = true;
-    options.Cookie.IsEssential = true;
-});
+
 
 // ===== Dependency Injection - Services =====
 builder.Services.AddScoped<IAuthService, AuthService>();
-builder.Services.AddScoped<IStorageService, StorageService>();
+
 builder.Services.AddScoped<ISheetService, SheetService>();
 // Register Excel service implementation (choose PHP CLI or HTTP-based service via config)
 if (builder.Configuration.GetValue<bool>("AppSettings:UsePhpCli"))
@@ -86,6 +83,25 @@ builder.Services.AddHttpClient();
 // ===== MVC & Razor Views =====
 builder.Services.AddControllersWithViews();
 
+// ===== Rate Limiting =====
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddFixedWindowLimiter("AuthPolicy", opt =>
+    {
+        opt.PermitLimit = 5;
+        opt.Window = TimeSpan.FromMinutes(1);
+        opt.QueueProcessingOrder = QueueProcessingOrder.OldestFirst;
+        opt.QueueLimit = 0;
+    });
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+});
+
+// ===== Form Options =====
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 5_242_880; // 5MB
+});
+
 var app = builder.Build();
 
 // ===== Reverse Proxy configuration (Nginx) =====
@@ -102,8 +118,19 @@ app.Use((context, next) =>
     if (!app.Environment.IsDevelopment())
     {
         context.Request.Scheme = "https";
-        context.Request.Host = new HostString("social-calc.duckdns.org");
+        var publicHostname = builder.Configuration["AppSettings:PublicHostname"] ?? "social-calc.duckdns.org";
+        context.Request.Host = new HostString(publicHostname);
     }
+    return next();
+});
+
+// ===== Security Headers Middleware =====
+app.Use((context, next) =>
+{
+    context.Response.Headers.Append("X-Frame-Options", "DENY");
+    context.Response.Headers.Append("X-Content-Type-Options", "nosniff");
+    context.Response.Headers.Append("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com; font-src 'self' https://cdnjs.cloudflare.com; img-src 'self' data:; connect-src 'self';");
+    context.Response.Headers.Append("Referrer-Policy", "strict-origin-when-cross-origin");
     return next();
 });
 
@@ -118,10 +145,10 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseRouting();
 
+app.UseRateLimiter();
+
 app.UseAuthentication();
 app.UseAuthorization();
-
-app.UseSession();
 
 // ===== Route Configuration =====
 app.MapControllerRoute(
@@ -138,9 +165,6 @@ using (var scope = app.Services.CreateScope())
     var db = scope.ServiceProvider.GetRequiredService<ApplicationDbContext>();
     db.Database.Migrate();
     
-    // Seed default users/data if needed
-    var userManager = scope.ServiceProvider.GetRequiredService<UserManager<User>>();
-    SeedDatabase(db, userManager);
 }
 
     // Print a single blue listening line for operator visibility (keeps console minimal)
@@ -154,32 +178,23 @@ using (var scope = app.Services.CreateScope())
     }
     catch { }
 
-    app.Run();
-
-// ===== Database Seeding =====
-static void SeedDatabase(ApplicationDbContext context, UserManager<User> userManager)
+// ===== Temp File Cleanup =====
+try
 {
-    // Always ensure test user exists
-    var testUserEmail = "demo@example.com";
-    var existingUser = userManager.FindByEmailAsync(testUserEmail).Result;
-    
-    if (existingUser == null)
+    var tmpDir = Path.Combine(builder.Environment.ContentRootPath, "excelinterop", "tmp");
+    if (Directory.Exists(tmpDir))
     {
-        // Seed test user for demo purposes
-        var testUser = new User
+        var oneHourAgo = DateTime.UtcNow.AddHours(-1);
+        foreach (var file in Directory.GetFiles(tmpDir))
         {
-            Email = testUserEmail,
-            UserName = testUserEmail,
-            EmailConfirmed = true,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow
-        };
-        
-        var result = userManager.CreateAsync(testUser, "DemoPass123").Result;
-        
-        // Re-fetch the user to get the auto-generated ID from database
-        existingUser = userManager.FindByEmailAsync(testUserEmail).Result;
+            if (File.GetCreationTimeUtc(file) < oneHourAgo)
+            {
+                File.Delete(file);
+            }
+        }
     }
-
-    // NO AUTOMATIC SEEDING - Let user create their own sheets
 }
+catch { }
+
+app.Run();
+

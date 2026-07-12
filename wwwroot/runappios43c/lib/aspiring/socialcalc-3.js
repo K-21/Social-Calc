@@ -3028,7 +3028,7 @@ SocialCalc.GetStyleNum = function(sheet, atype, style) {
    if (style.length==0) return 0; // null means use zero, which means default or global default
 
    num = sheet[atype+"hash"][style];
-   if (!num) {
+   if (typeof num === "undefined") {
       if (sheet[atype+"s"].length<1) sheet[atype+"s"].push("");
       num = sheet[atype+"s"].push(style) - 1;
       sheet[atype+"hash"][style] = num;

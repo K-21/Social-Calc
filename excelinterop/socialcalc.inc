@@ -520,9 +520,9 @@ function socialcalc_save_sheet($sheet) {
   if (!empty($sheet['layouts'])) foreach ($sheet['layouts'] as $lid => $layout) {
     $sheetar[] = 'layout:'. $lid .':'. $layout;
   }
-//  if (!empty($sheet['colors'])) foreach ($sheet['colors'] as $cid => $color) {
-//    $sheetar[] = 'color:'. $cid .':'. $color;
-//  }
+  if (!empty($sheet['colors'])) foreach ($sheet['colors'] as $cid => $color) {
+    $sheetar[] = 'color:'. $cid .':'. $color;
+  }
   if (!empty($sheet['valueformats'])) foreach ($sheet['valueformats'] as $vfid => $valueformat) {
     $sheetar[] = 'valueformat:'. $vfid .':'. socialcalc_encode_value($valueformat);
   }

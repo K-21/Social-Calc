@@ -12,7 +12,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: SocialCalc-Website/excelinterop
+        working-directory: excelinterop
 
     steps:
     - uses: actions/checkout@v4

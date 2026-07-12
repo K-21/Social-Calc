@@ -162,7 +162,7 @@ $defaultFont = $defaultStyle->getFont();
 
 if (!empty($sc['colattribs']['width'])) {
     foreach ($sc['colattribs']['width'] as $c => $width) {
-        $columnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c - 1);
+        $columnIndex = \PhpOffice\PhpSpreadsheet\Cell\Coordinate::stringFromColumnIndex($c);
         $worksheet = $workbook->getActiveSheet();
         $worksheet->getColumnDimension($columnIndex)->setWidth($width);
     }
@@ -210,9 +210,9 @@ function _sheetnode_phpexcel_export_cell_value_and_format($c, $coord, $sc, $work
   $cell = $worksheet->getCell($coord);
   $style = $worksheet->getStyle($coord);
 
-  $valuetype = substr($c['valuetype'], 0, 1);
-  $valuesubtype = substr($c['valuetype'], 1);
-  $displayvalue = $c['datavalue'];
+  $valuetype = isset($c['valuetype']) ? substr($c['valuetype'], 0, 1) : '';
+  $valuesubtype = isset($c['valuetype']) ? substr($c['valuetype'], 1) : '';
+  $displayvalue = isset($c['datavalue']) ? $c['datavalue'] : '';
 
   // CSV Injection Protection: Prefix strings starting with =, +, -, or @ with a single quote
   if ($valuetype == 't' && is_string($displayvalue) && preg_match('/^[=+\-@]/', $displayvalue)) {

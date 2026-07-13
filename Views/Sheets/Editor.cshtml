@@ -84,16 +84,15 @@
         </div>
     </div>
 
-    <div class="table-responsive w-100" style="overflow-x: auto; -webkit-overflow-scrolling: touch;">
-        <div style="min-width: 800px;">
-            <!-- WorkbookControl - for sheet tabs (same as Python) -->
-            <div id="workbookControl" style="background-color:#80A9F3;">
-            </div>
+    <!-- Spreadsheet Area -->
+    <div class="w-100 flex-grow-1" style="min-height: 400px; display: flex; flex-direction: column;">
+        <!-- WorkbookControl - for sheet tabs -->
+        <div id="workbookControl" style="background-color:#80A9F3; width: 100%;">
+        </div>
 
-            <!-- Spreadsheet Container (same as Python's tableeditor div) -->
-            <div id="socialcalcContainer" style="width: 100%; height: 600px; border: 1px solid #ddd; margin: 8px 0px 10px 0px;">
-                <!-- SocialCalc will be loaded here -->
-            </div>
+        <!-- Spreadsheet Container -->
+        <div id="socialcalcContainer" style="width: 100%; flex-grow: 1; border: 1px solid #ddd; margin-bottom: 10px; position: relative;">
+            <!-- SocialCalc will be loaded here -->
         </div>
     </div>
 

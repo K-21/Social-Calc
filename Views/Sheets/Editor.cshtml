@@ -311,25 +311,36 @@
         });
 
 
-        // Toolbar Formatting Buttons
+        // Toolbar Formatting Buttons - use workbook's active editor
+        function wbExec(cmdstr) {
+            try {
+                var ctrl = SocialCalc.GetCurrentWorkBookControl();
+                if (ctrl && ctrl.workbook && ctrl.workbook.spreadsheet) {
+                    ctrl.workbook.spreadsheet.ExecuteCommand(cmdstr, '');
+                } else if (spreadsheet) {
+                    spreadsheet.ExecuteCommand(cmdstr, '');
+                }
+            } catch(e) { console.warn('Toolbar command error:', e); }
+        }
+
         document.getElementById('btnUndo').addEventListener('click', function() {
-            if (spreadsheet) spreadsheet.ExecuteCommand('undo', '');
+            wbExec('undo');
         });
 
         document.getElementById('btnRedo').addEventListener('click', function() {
-            if (spreadsheet) spreadsheet.ExecuteCommand('redo', '');
+            wbExec('redo');
         });
 
         document.getElementById('btnBold').addEventListener('click', function() {
-            if (spreadsheet) spreadsheet.ExecuteCommand('set %C font normal bold * *', '');
+            wbExec('set %C font bold normal *');
         });
 
         document.getElementById('btnItalic').addEventListener('click', function() {
-            if (spreadsheet) spreadsheet.ExecuteCommand('set %C font italic normal * *', '');
+            wbExec('set %C font normal italic *');
         });
 
         document.getElementById('btnUnderline').addEventListener('click', function() {
-            if (spreadsheet) spreadsheet.ExecuteCommand('set %C textvalueformat text-wiki', '');
+            wbExec('set %C textvalueformat text-underline');
         });
 
         // Export PDF

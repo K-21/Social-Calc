@@ -129,18 +129,18 @@
 @section Scripts {
     <!-- SocialCalc Libraries - Load in correct order (same as Python importcollabload.html) -->
     <script src="~/js/jquery.min.js"></script>
-    <script src="~/js/socialcalcconstants.js"></script>
-    <script src="~/js/socialcalc-3.js"></script>
-    <script src="~/js/socialcalctouch.js" onerror="/* socialcalctouch.js not found, continuing... */"></script>
-    <script src="~/js/socialcalctableeditor.js"></script>
-    <script src="~/js/formatnumber2.js" onerror="/* formatnumber2.js not found, continuing... */"></script>
-    <script src="~/js/formula1.js"></script>
-    <script src="~/js/socialcalcpopup.js" onerror="/* socialcalcpopup.js not found, continuing... */"></script>
-    <script src="~/js/socialcalcspreadsheetcontrol.js"></script>
-    <script src="~/js/socialcalcworkbook.js"></script>
-    <script src="~/js/socialcalcworkbookcontrol.js"></script>
-    <script src="~/js/socialcalcimages.js"></script>
-    <script src="~/js/json2.js" onerror="/* json2.js not found, continuing... */"></script>
+    <script src="~/js/socialcalcconstants.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalc-3.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalctouch.js" asp-append-version="true" onerror="/* socialcalctouch.js not found, continuing... */"></script>
+    <script src="~/js/socialcalctableeditor.js" asp-append-version="true"></script>
+    <script src="~/js/formatnumber2.js" asp-append-version="true" onerror="/* formatnumber2.js not found, continuing... */"></script>
+    <script src="~/js/formula1.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalcpopup.js" asp-append-version="true" onerror="/* socialcalcpopup.js not found, continuing... */"></script>
+    <script src="~/js/socialcalcspreadsheetcontrol.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalcworkbook.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalcworkbookcontrol.js" asp-append-version="true"></script>
+    <script src="~/js/socialcalcimages.js" asp-append-version="true"></script>
+    <script src="~/js/json2.js" asp-append-version="true" onerror="/* json2.js not found, continuing... */"></script>
 
     <script>
         // Wait for all scripts to load
@@ -223,7 +223,16 @@
                 return;
             }
             
-            // Force save any active cell edits before extracting sheet data
+            // Step 1: Blur the active input element first — this triggers SocialCalc's
+            // natural blur handler which commits the cell without going async
+            try {
+                var activeEl = document.activeElement;
+                if (activeEl && activeEl !== document.body) {
+                    activeEl.blur();
+                }
+            } catch(e) {}
+
+            // Step 2: Also force EditorSaveEdit in case blur wasn't enough
             try { 
                 if (spreadsheet.editor && spreadsheet.editor.state === "input") {
                     spreadsheet.editor.EditorSaveEdit(); 
@@ -233,8 +242,27 @@
             // Indicate manual save started
             showSavingIndicator(true);
 
-            // Wait 150ms for SocialCalc's internal command queue to process the edit before extracting data
+            // Step 3: Poll until SocialCalc's command timer is idle (max 2s), then save
+            var maxWait = 2000;
+            var interval = 20;
+            var waited = 0;
+            function waitAndSave() {
+                var sci = SocialCalc && SocialCalc.SheetCommandInfo;
+                var queueIdle = !sci || !sci.timerobj;
+                if (queueIdle || waited >= maxWait) {
+                    doSave();
+                } else {
+                    waited += interval;
+                    setTimeout(waitAndSave, interval);
+                }
+            }
+
+            // Small initial delay to let blur() event handlers fire first
             setTimeout(function() {
+                waitAndSave();
+            }, 50);
+
+            function doSave() {
                 // Use WorkBookControlSaveSheet to save in workbook format (same as Python)
                 const sheetData = SocialCalc.WorkBookControlSaveSheet();
                 
@@ -249,7 +277,6 @@
                 .then(r => r.json())
                 .then(data => {
                     if (data.success) {
-                        // Update autosave state
                         lastSavedSnapshot = sheetData;
                         unsavedChanges = false;
                         showSavedIndicator();
@@ -266,7 +293,7 @@
                 .finally(() => {
                     showSavingIndicator(false);
                 });
-            }, 150);
+            }
         });
 
         // Toolbar Formatting Buttons

@@ -230,44 +230,43 @@
                 }
             } catch (e) { console.warn("Error forcing edit save", e); }
             
-            // Use WorkBookControlSaveSheet to save in workbook format (same as Python)
-            const sheetData = SocialCalc.WorkBookControlSaveSheet();
-            @* console.log('Data to save:', sheetData);
-            // data length log removed
-             *@
             // Indicate manual save started
             showSavingIndicator(true);
 
-            fetch(`/Sheets/Save/@(Model?.Id ?? 0)`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
-                },
-                body: JSON.stringify({ data: sheetData })
-            })
-            .then(r => r.json())
-            .then(data => {
-             //   console.log('Save response:', data);
-                if (data.success) {
-                //    console.log('Save successful!');
-                    // Update autosave state
-                    lastSavedSnapshot = sheetData;
-                    unsavedChanges = false;
-                    showSavedIndicator();
-                    showSaveSuccessToast();
-                } else {
-                    console.error('Save failed:', data.message);
-                    alert('Error saving sheet: ' + data.message);
-                }
-            })
-            .catch(e => {
-                console.error('Save error:', e);
-                alert('Error: ' + e.message);
-            })
-            .finally(() => {
-                showSavingIndicator(false);
-            });
+            // Wait 150ms for SocialCalc's internal command queue to process the edit before extracting data
+            setTimeout(function() {
+                // Use WorkBookControlSaveSheet to save in workbook format (same as Python)
+                const sheetData = SocialCalc.WorkBookControlSaveSheet();
+                
+                fetch(`/Sheets/Save/@(Model?.Id ?? 0)`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
+                    },
+                    body: JSON.stringify({ data: sheetData })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        // Update autosave state
+                        lastSavedSnapshot = sheetData;
+                        unsavedChanges = false;
+                        showSavedIndicator();
+                        showSaveSuccessToast();
+                    } else {
+                        console.error('Save failed:', data.message);
+                        alert('Error saving sheet: ' + data.message);
+                    }
+                })
+                .catch(e => {
+                    console.error('Save error:', e);
+                    alert('Error saving sheet.');
+                })
+                .finally(() => {
+                    showSavingIndicator(false);
+                });
+            }, 150);
         });
 
         // Toolbar Formatting Buttons

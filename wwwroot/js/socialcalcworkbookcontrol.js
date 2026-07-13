@@ -1415,7 +1415,7 @@ SocialCalc.SheetBarSheetButtonMenuItem = function(id, t) {
 	this.ele.id = id;
 	this.ele.innerHTML = t;
 	this.ele.className = "";
-	this.ele.style.cssText = "padding:3px 4px;width:100px;height:20px;background-color:#FFF;";
+	this.ele.style.cssText = "padding:6px 8px;min-width:120px;background-color:#FFF;cursor:pointer;font-family:sans-serif;font-size:13px;line-height:1.2;";
 
 	var params = {
 			normalstyle: "backgroundColor:#FFF;",
@@ -1493,7 +1493,7 @@ SocialCalc.SheetBarSheetButtonMenu = function(id, clickedsheetid) {
 	this.ele.id = id;
 	this.ele.className = "";
 	this.ele.clickedsheetid = clickedsheetid;
-	this.ele.style.cssText = "border:1px solid #000;position:absolute;top:200px;left:0px;width=100px;z-index:120";
+	this.ele.style.cssText = "border:1px solid #999;box-shadow:2px 2px 5px rgba(0,0,0,0.2);position:absolute;top:200px;left:0px;min-width:120px;z-index:120;background-color:#FFF;";
 
 	var ele1 = new SocialCalc.SheetBarSheetButtonMenuItem("sbsb_deletesheet"," Delete Sheet");
 	this.ele.appendChild(ele1);

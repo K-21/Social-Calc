@@ -37,6 +37,7 @@ public class PhpCliExcelService : IExcelService
         var extensions = new Dictionary<string, string>
         {
             { "Xlsx", ".xlsx" },
+            { "Xls", ".xls" },
             { "Csv", ".csv" },
             { "Html", ".html" },
             { "Ods", ".ods" },
@@ -59,7 +60,7 @@ public class PhpCliExcelService : IExcelService
             var psi = new ProcessStartInfo
             {
                 FileName = phpPath,
-                Arguments = $"\"{scriptPath}\" \"{inputFile}\" \"{outputFile}\" {format}",
+                Arguments = $"\"{scriptPath}\" \"{inputFile}\" \"{outputFile}\" {format} \"{sheet.FileName}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,

@@ -173,24 +173,23 @@ if (!empty($sc['colattribs']['width'])) {
     $workbook->getActiveSheet()->getRowDimension($r)->setRowHeight($height);
   }
 
-  // Test formulas and replace with calculated value upon failure.
+  // Test formulas and replace with calculated value ONLY upon failure.
   foreach ($workbook->getActiveSheet()->getCellCollection() as $cellID) {
     $cell = $workbook->getActiveSheet()->getCell($cellID);
     if ($cell->getDatatype() == \PhpOffice\PhpSpreadsheet\Cell\DataType::TYPE_FORMULA) {
       try {
-        //$cell->getCalculatedValue(); // don't care about return value
-	$coord = $cell->getCoordinate();
-        $cell->setValue($sc['cells'][$coord]['datavalue']);
+        // Just verify the formula is valid in PhpSpreadsheet
+        $cell->getCalculatedValue(); 
       }
       catch (Exception $e) {
         $coord = $cell->getCoordinate();
-        $cell->setValue($sc['cells'][$coord]['datavalue']);
-        $comment = t(variable_get('sheetnode_phpexcel_bad_formula', 'Could not export formula !formula.'), array('!formula' => $sc['cells'][$coord]['formula']));
+        // If it's invalid, fallback to static value
+        $cell->setValue(isset($sc['cells'][$coord]['datavalue']) ? $sc['cells'][$coord]['datavalue'] : '');
+        $comment = "Could not export formula: " . (isset($sc['cells'][$coord]['formula']) ? $sc['cells'][$coord]['formula'] : 'Unknown');
         $workbook->getActiveSheet()->getComment($coord)->getText()->createTextRun($comment);
       }
     }
   }
-  //return '';
 
   // Redirect output to a client’s web browser.
   //$plugins = sheetnode_phpexcel_get_plugins();

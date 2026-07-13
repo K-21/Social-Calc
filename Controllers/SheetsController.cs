@@ -36,6 +36,7 @@ public class SheetsController : Controller
     }
 
     [HttpGet("")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public async Task<IActionResult> Index(int page = 1)
     {
         try
@@ -64,6 +65,7 @@ public class SheetsController : Controller
 
     [HttpGet("{id}")]
     [HttpGet("Editor/{id}")]
+    [ResponseCache(Duration = 0, Location = ResponseCacheLocation.None, NoStore = true)]
     public async Task<IActionResult> Editor(int id)
     {
         try
@@ -302,7 +304,7 @@ public class SheetsController : Controller
                 return StatusCode(500, "Error exporting sheet");
             }
 
-            var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.xlsx";
+            var fileName = $"{sheet.FileName}.xlsx";
             return File(excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
         }
         catch (Exception ex)
@@ -335,7 +337,7 @@ public class SheetsController : Controller
                 return StatusCode(500, "Error exporting to CSV");
             }
 
-            var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.csv";
+            var fileName = $"{sheet.FileName}.csv";
             return File(csvStream, "text/csv", fileName);
         }
         catch (Exception ex)
@@ -365,6 +367,7 @@ public class SheetsController : Controller
             var contentTypes = new Dictionary<string, string>
             {
                 { "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
+                { "xls", "application/vnd.ms-excel" },
                 { "csv", "text/csv" },
                 { "html", "text/html" },
                 { "ods", "application/vnd.oasis.opendocument.spreadsheet" }
@@ -379,7 +382,7 @@ public class SheetsController : Controller
                 return StatusCode(500, $"Error exporting to {format}");
             }
 
-            var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.{formatKey}";
+            var fileName = $"{sheet.FileName}.{formatKey}";
             var contentType = contentTypes.GetValueOrDefault(formatKey, "application/octet-stream");
             
             return File(stream, contentType, fileName);
@@ -416,7 +419,7 @@ public class SheetsController : Controller
                 return StatusCode(500, "Error exporting to PDF");
             }
 
-            var fileName = $"{sheet.FileName}_{DateTime.Now:yyyyMMddHHmmss}.pdf";
+            var fileName = $"{sheet.FileName}.pdf";
             return File(pdfStream, "application/pdf", fileName);
         }
         catch (Exception ex)

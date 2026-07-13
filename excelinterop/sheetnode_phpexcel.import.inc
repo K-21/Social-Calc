@@ -255,12 +255,10 @@ function _sheetnode_phpexcel_import_cell($workbook, $sheet, $cell, &$sc) {
     $c['datatype'] = 'f';
     $c['formula'] = ltrim($cell->getValue(), '=');
     try {
-      //$c['datavalue'] = $cell->getCalculatedValue();
-      $c['datavalue'] = 0;
+      $c['datavalue'] = $cell->getCalculatedValue();
     }
     catch (Exception $e) {
       $c['datavalue'] = 0;
-      //watchdog('sheetnode_phpexcel', 'Error importing formula "!formula" at cell !coord.', array('!formula' => $c['formula'], '!coord' => $cell->getCoordinate()), 'warning');
     }
     $c['valuetype'] = is_numeric($c['datavalue']) ? 'n' : 't';
     break;

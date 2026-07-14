@@ -353,15 +353,15 @@
         });
 
         document.getElementById('btnBold').addEventListener('click', function() {
-            wbExec('set %C font bold normal *');
+            wbExec('set %C font normal bold * *');
         });
 
         document.getElementById('btnItalic').addEventListener('click', function() {
-            wbExec('set %C font normal italic *');
+            wbExec('set %C font italic normal * *');
         });
 
         document.getElementById('btnUnderline').addEventListener('click', function() {
-            wbExec('set %C textvalueformat text-underline');
+            wbExec('set %C textvalueformat text-wiki');
         });
 
         // Export PDF

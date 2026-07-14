@@ -271,6 +271,12 @@
                                 new SocialCalc.Parse(cmdline),
                                 false
                             );
+                            // Ensure the sheet is recalculated so formulas get their calculated value before save
+                            SocialCalc.ExecuteSheetCommand(
+                                sheetobj,
+                                new SocialCalc.Parse("recalc"),
+                                false
+                            );
                         }
                     }
                 }

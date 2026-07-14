@@ -283,6 +283,10 @@
             } catch (e) { console.warn("Error committing active cell:", e); }
 
             // Now safely grab data and send to server
+            window.isSaving = true;
+            document.getElementById('btnSave').disabled = true;
+            var backBtn = document.querySelector('a[href="/Sheets"]');
+            if (backBtn) backBtn.style.pointerEvents = 'none';
             showSavingIndicator(true);
             var sheetData = SocialCalc.WorkBookControlSaveSheet();
 
@@ -311,8 +315,20 @@
                 alert('Error saving sheet.');
             })
             .finally(() => {
+                window.isSaving = false;
+                document.getElementById('btnSave').disabled = false;
+                if (backBtn) backBtn.style.pointerEvents = 'auto';
                 showSavingIndicator(false);
             });
+        });
+
+        // Warn user if they try to leave the page while saving
+        window.addEventListener('beforeunload', function (e) {
+            if (window.isSaving) {
+                var confirmationMessage = 'A save is currently in progress. If you leave now, your changes might not be saved.';
+                (e || window.event).returnValue = confirmationMessage;
+                return confirmationMessage;
+            }
         });
 
 

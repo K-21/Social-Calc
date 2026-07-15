@@ -49,6 +49,9 @@
                 <button type="button" class="btn btn-outline-secondary" id="btnUnderline">
                     <i class="fas fa-underline"></i>
                 </button>
+                <button type="button" class="btn btn-outline-secondary" id="btnMergeCells">
+                    <i class="fas fa-object-group"></i> Merge
+                </button>
             </div>
             <div class="btn-group ms-2 mb-2" role="group">
                 <button type="button" class="btn btn-outline-secondary" id="btnExportPDF">
@@ -262,6 +265,27 @@
             .finally(() => {
                 showSavingIndicator(false);
             });
+        });
+
+        // Merge Cells Toggle
+        document.getElementById('btnMergeCells').addEventListener('click', function() {
+            if (spreadsheet && spreadsheet.editor) {
+                // If there's a multi-cell range selected, merge it
+                if (spreadsheet.editor.range && spreadsheet.editor.range.hasrange) {
+                    let left = spreadsheet.editor.range.left;
+                    let right = spreadsheet.editor.range.right;
+                    let top = spreadsheet.editor.range.top;
+                    let bottom = spreadsheet.editor.range.bottom;
+                    let coord1 = SocialCalc.crToCoord(left, top);
+                    let coord2 = SocialCalc.crToCoord(right, bottom);
+                    spreadsheet.ExecuteCommand('merge ' + coord1 + ':' + coord2, '');
+                } else if (spreadsheet.editor.ecell) {
+                    // If only one cell is selected, it might be an already merged cell. Unmerge it.
+                    spreadsheet.ExecuteCommand('unmerge ' + spreadsheet.editor.ecell.coord, '');
+                }
+                // Force UI update
+                spreadsheet.ExecuteCommand('redisplay', '');
+            }
         });
 
         // Export PDF

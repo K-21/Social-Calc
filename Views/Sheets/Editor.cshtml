@@ -342,42 +342,42 @@
                     const data = new Uint8Array(evt.target.result);
                     const wb = XLSX.read(data, {type: 'array'});
                     
-                    const sheetName = wb.SheetNames[0];
-                    const ws = wb.Sheets[sheetName];
-                    
-                    let savestr = "version:1.5\n";
-                    if (ws['!ref']) {
-                        const range = XLSX.utils.decode_range(ws['!ref']);
-                        for(let R = range.s.r; R <= range.e.r; ++R) {
-                            for(let C = range.s.c; C <= range.e.c; ++C) {
-                                const cellRef = XLSX.utils.encode_cell({c:C, r:R});
-                                const cell = ws[cellRef];
-                                if (!cell) continue;
-                                
-                                const scCol = XLSX.utils.encode_col(C);
-                                const scRow = R + 1;
-                                const val = cell.v;
-                                
-                                if (typeof val === 'number') {
-                                    savestr += `cell:${scCol}${scRow}:v:${val}\n`;
-                                } else {
-                                    let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
-                                    savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
+                    let sheetArr = {};
+                    wb.SheetNames.forEach((sheetName, index) => {
+                        const ws = wb.Sheets[sheetName];
+                        let savestr = "version:1.5\n";
+                        if (ws['!ref']) {
+                            const range = XLSX.utils.decode_range(ws['!ref']);
+                            for(let R = range.s.r; R <= range.e.r; ++R) {
+                                for(let C = range.s.c; C <= range.e.c; ++C) {
+                                    const cellRef = XLSX.utils.encode_cell({c:C, r:R});
+                                    const cell = ws[cellRef];
+                                    if (!cell) continue;
+                                    
+                                    const scCol = XLSX.utils.encode_col(C);
+                                    const scRow = R + 1;
+                                    const val = cell.v;
+                                    
+                                    if (typeof val === 'number') {
+                                        savestr += `cell:${scCol}${scRow}:v:${val}\n`;
+                                    } else {
+                                        let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
+                                        savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
+                                    }
                                 }
                             }
+                            savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
                         }
-                        savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
-                    }
+                        sheetArr["Sheet" + index] = {
+                            name: sheetName,
+                            sheetstr: { savestr: savestr }
+                        };
+                    });
                     
                     const socialCalcJson = JSON.stringify({
-                        numsheets: 1,
-                        currentname: sheetName,
-                        sheetArr: {
-                            "Sheet0": {
-                                name: sheetName,
-                                sheetstr: { savestr: savestr }
-                            }
-                        },
+                        numsheets: wb.SheetNames.length,
+                        currentname: wb.SheetNames[0],
+                        sheetArr: sheetArr,
                         currentid: "Sheet0"
                     });
                     

@@ -253,29 +253,103 @@
                 fileInput.value = ''; // Reset input
                 return;
             }
-            
-            const formData = new FormData();
-            formData.append('file', file);
 
-            fetch('/Sheets/Import', {
-                method: 'POST',
-                headers: {
-                    'RequestVerificationToken': document.querySelector('input[name="__RequestVerificationToken"]').value
-                },
-                body: formData
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.success) {
-                    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
-                    window.location.href = `/Sheets/Editor/${data.id}`;
-                } else {
-                    alert('Error importing file: ' + data.message);
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const wb = XLSX.read(data, {type: 'array'});
+                    
+                    const sheetName = wb.SheetNames[0];
+                    const ws = wb.Sheets[sheetName];
+                    
+                    // Generate SocialCalc savestr
+                    let savestr = "version:1.5\n";
+                    if (ws['!ref']) {
+                        const range = XLSX.utils.decode_range(ws['!ref']);
+                        for(let R = range.s.r; R <= range.e.r; ++R) {
+                            for(let C = range.s.c; C <= range.e.c; ++C) {
+                                const cellRef = XLSX.utils.encode_cell({c:C, r:R});
+                                const cell = ws[cellRef];
+                                if (!cell) continue;
+                                
+                                const scCol = XLSX.utils.encode_col(C);
+                                const scRow = R + 1;
+                                const val = cell.v;
+                                
+                                if (typeof val === 'number') {
+                                    savestr += `cell:${scCol}${scRow}:v:${val}\n`;
+                                } else {
+                                    // SocialCalc string escaping: : -> \c, \ -> \b, \n -> \n
+                                    let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
+                                    savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
+                                }
+                            }
+                        }
+                        savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
+                    }
+                    
+                    // Build JSON Wrapper expected by Editor
+                    const socialCalcJson = JSON.stringify({
+                        numsheets: 1,
+                        currentname: sheetName,
+                        sheetArr: {
+                            "Sheet0": {
+                                name: sheetName,
+                                sheetstr: {
+                                    savestr: savestr
+                                }
+                            }
+                        },
+                        currentid: "Sheet0"
+                    });
+                    
+                    // 1. Create a blank sheet
+                    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                    const cleanFileName = file.name.replace(/[^a-zA-Z0-9 _\-\.]/g, "").trim() || "Imported Sheet";
+                    
+                    fetch('/Sheets/Create', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': token
+                        },
+                        body: JSON.stringify({ FileName: cleanFileName })
+                    })
+                    .then(r => r.json())
+                    .then(createData => {
+                        if (createData.success) {
+                            // 2. Save the SheetJS data to this new sheet
+                            return fetch(`/Sheets/Save/${createData.id}`, {
+                                method: 'POST',
+                                headers: {
+                                    'Content-Type': 'application/json',
+                                    'RequestVerificationToken': token
+                                },
+                                body: JSON.stringify({ Data: socialCalcJson })
+                            }).then(r => r.json()).then(saveData => {
+                                if (saveData.success) {
+                                    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                                    window.location.href = `/Sheets/Editor/${createData.id}`;
+                                } else {
+                                    alert("Error saving imported data.");
+                                }
+                            });
+                        } else {
+                            alert("Error creating sheet.");
+                        }
+                    })
+                    .catch(err => {
+                        alert('API Error: ' + err.message);
+                    });
+                    
+                } catch(err) {
+                    console.error(err);
+                    alert("Error parsing Excel file with SheetJS: " + err.message);
                 }
-            })
-            .catch(e => {
-                alert('Error: ' + e.message);
-            });
+            };
+            
+            reader.readAsArrayBuffer(file);
         }
 
         // Check if we just saved a sheet and auto-refresh if needed

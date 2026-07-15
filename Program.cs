@@ -173,7 +173,7 @@ using (var scope = app.Services.CreateScope())
         var urls = string.Join(", ", app.Urls).Replace("0.0.0.0", "localhost");
         var previousColor = Console.ForegroundColor;
         Console.ForegroundColor = ConsoleColor.Blue;
-        Console.WriteLine($"Now listening on: {urls} (use this in your browser)");
+        Console.WriteLine($"Now listening on: {urls} ");
         Console.ForegroundColor = previousColor;
     }
     catch { }

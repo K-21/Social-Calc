@@ -370,7 +370,7 @@
                                         r: R,
                                         c: C,
                                         v: cell.v,
-                                        t: (typeof cell.v === 'number') ? 'n' : 's',
+                                        t: cell.t || ((typeof cell.v === 'number') ? 'n' : 's'),
                                         f: cell.f || null
                                     });
                                 }

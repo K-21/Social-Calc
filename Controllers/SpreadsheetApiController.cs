@@ -174,7 +174,7 @@ namespace SocialCalc.Web.Controllers
                             cellDto.T = "s";
                             cellDto.V = UnescapeString(string.Join(":", parts.Skip(3)));
                         }
-                        else if (type == "vtf") // cell:A1:vtf:n:10:SUM(A1)
+                        else if (type == "vtf" || type == "vtc") // cell:A1:vtf:n:10:SUM(A1)
                         {
                             string fType = parts[3]; // n or t
                             cellDto.T = (fType == "n") ? "n" : "s";
@@ -183,7 +183,7 @@ namespace SocialCalc.Web.Controllers
                             if (fType == "n" && double.TryParse(valStr, out double val)) cellDto.V = val;
                             else cellDto.V = UnescapeString(valStr);
 
-                            if (parts.Length > 5)
+                            if (type == "vtf" && parts.Length > 5)
                             {
                                 cellDto.F = UnescapeString(string.Join(":", parts.Skip(5)));
                             }
@@ -214,7 +214,7 @@ namespace SocialCalc.Web.Controllers
                 }
                 else if (parts[0] == "col" && parts.Length >= 4 && parts[2] == "w") // col:A:w:120
                 {
-                    (int c, _) = DecodeCoord(parts[1] + "1");
+                    int c = DecodeColLetter(parts[1]);
                     if (double.TryParse(parts[3], out double w))
                     {
                         sheet.Cols.Add(new ColRowImportDto { Index = c, Size = w });
@@ -245,6 +245,19 @@ namespace SocialCalc.Web.Controllers
             return (col - 1, row - 1); // 0-indexed
         }
 
+        private int DecodeColLetter(string col)
+        {
+            int c = 0;
+            foreach (char ch in col)
+            {
+                if (char.IsLetter(ch))
+                {
+                    c = (c * 26) + (char.ToUpper(ch) - 'A' + 1);
+                }
+            }
+            return c - 1;
+        }
+
         private string UnescapeString(string s)
         {
             if (string.IsNullOrEmpty(s)) return "";
@@ -260,7 +273,7 @@ namespace SocialCalc.Web.Controllers
                 var incomingSheet = dto.Sheets[i];
                 string savestr = GenerateSaveStr(incomingSheet);
                 
-                sheetArr[$"Sheet{i}"] = new {
+                sheetArr[incomingSheet.Name] = new {
                     name = incomingSheet.Name,
                     sheetstr = new {
                         savestr = savestr
@@ -286,6 +299,13 @@ namespace SocialCalc.Web.Controllers
             int maxRow = 1;
             int maxCol = 1;
 
+            // Group merges by start cell
+            var mergesByCell = new Dictionary<(int r, int c), MergeImportDto>();
+            foreach (var m in sheet.Merges)
+            {
+                mergesByCell[(m.S.R, m.S.C)] = m;
+            }
+
             // Map cells
             foreach (var cell in sheet.Cells)
             {
@@ -301,7 +321,6 @@ namespace SocialCalc.Web.Controllers
                 if (!string.IsNullOrEmpty(cell.F))
                 {
                     // SocialCalc uses 'vtf' for values with formats and formulas
-                    // E.g. cell:A1:vtf:n:10:SUM(B2:B3)
                     string fType = (cell.T == "n") ? "n" : "t";
                     string v = (cell.V != null) ? cell.V.ToString() : "";
                     
@@ -320,23 +339,44 @@ namespace SocialCalc.Web.Controllers
                         valStr = $"t:{EscapeString(cell.V.ToString())}";
                     }
                 }
+
+                // Check if this cell is the start of a merge
+                string mergeStr = "";
+                if (mergesByCell.TryGetValue((cell.R, cell.C), out var merge))
+                {
+                    int rowSpan = merge.E.R - merge.S.R + 1;
+                    int colSpan = merge.E.C - merge.S.C + 1;
+                    if (rowSpan > 1) mergeStr += $":rowspan:{rowSpan}";
+                    if (colSpan > 1) mergeStr += $":colspan:{colSpan}";
+                    mergesByCell.Remove((cell.R, cell.C)); // handled
+                }
                 
                 if (!string.IsNullOrEmpty(valStr))
                 {
-                    sb.Append($"cell:{scCol}{scRow}:{valStr}\n");
+                    sb.Append($"cell:{scCol}{scRow}:{valStr}{mergeStr}\n");
+                }
+                else if (!string.IsNullOrEmpty(mergeStr))
+                {
+                    sb.Append($"cell:{scCol}{scRow}{mergeStr}\n");
                 }
             }
 
-            // Map merges (rowspan / colspan)
-            foreach (var m in sheet.Merges)
+            // Map remaining merges (empty cells with merges)
+            foreach (var m in mergesByCell.Values)
             {
                 string scCol = EncodeCol(m.S.C);
                 int scRow = m.S.R + 1;
                 int rowSpan = m.E.R - m.S.R + 1;
                 int colSpan = m.E.C - m.S.C + 1;
                 
-                if (rowSpan > 1) sb.Append($"cell:{scCol}{scRow}:rowspan:{rowSpan}\n");
-                if (colSpan > 1) sb.Append($"cell:{scCol}{scRow}:colspan:{colSpan}\n");
+                string mergeStr = "";
+                if (rowSpan > 1) mergeStr += $":rowspan:{rowSpan}";
+                if (colSpan > 1) mergeStr += $":colspan:{colSpan}";
+                
+                if (!string.IsNullOrEmpty(mergeStr))
+                {
+                    sb.Append($"cell:{scCol}{scRow}{mergeStr}\n");
+                }
             }
             
             // Map column widths

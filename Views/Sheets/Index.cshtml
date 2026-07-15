@@ -248,7 +248,7 @@
                 if (format === 'csv') {
                     XLSX.writeFile(wb, `${fileName}.csv`, { bookType: 'csv' });
                 } else if (format === 'tsv') {
-                    XLSX.writeFile(wb, `${fileName}.tsv`, { bookType: 'txt' });
+                    XLSX.writeFile(wb, `${fileName}.tsv`, { bookType: 'csv', FS: '\t' });
                 } else {
                     XLSX.writeFile(wb, `${fileName}.xlsx`);
                 }
@@ -359,7 +359,7 @@
                                         r: R,
                                         c: C,
                                         v: cell.v,
-                                        t: (typeof cell.v === 'number') ? 'n' : 's',
+                                        t: cell.t || ((typeof cell.v === 'number') ? 'n' : 's'),
                                         f: cell.f || null
                                     });
                                 }

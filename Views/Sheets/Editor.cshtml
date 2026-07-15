@@ -292,7 +292,7 @@
                 var wb = XLSX.utils.table_to_book(tableEle, { sheet: "Sheet1" });
                 
                 // Construct filename
-                var baseName = "@(Model?.Name ?? "Export")";
+                var baseName = "@(Model?.FileName ?? "Export")";
                 // Strip invalid characters from name
                 baseName = baseName.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || "Export";
                 var filename = baseName + "." + extension;

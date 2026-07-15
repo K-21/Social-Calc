@@ -170,10 +170,10 @@ using (var scope = app.Services.CreateScope())
     // Print a single blue listening line for operator visibility (keeps console minimal)
     try
     {
-        var urls = string.Join(", ", app.Urls);
+        var urls = string.Join(", ", app.Urls).Replace("0.0.0.0", "localhost");
         var previousColor = Console.ForegroundColor;
         Console.ForegroundColor = ConsoleColor.Blue;
-        Console.WriteLine($"Now listening on: {urls}");
+        Console.WriteLine($"Now listening on: {urls} (use this in your browser)");
         Console.ForegroundColor = previousColor;
     }
     catch { }

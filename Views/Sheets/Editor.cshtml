@@ -121,6 +121,8 @@
 
 @section Scripts {
     <!-- SocialCalc Libraries - Load in correct order (same as Python importcollabload.html) -->
+    <!-- SheetJS library for client-side export -->
+    <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
     <script src="~/js/jquery.min.js"></script>
     <script src="~/js/socialcalcconstants.js"></script>
     <script src="~/js/socialcalc-3.js"></script>
@@ -266,28 +268,61 @@
             window.location.href = `/sheets/export-gdrive/@(Model?.Id ?? 0)`;
         });
 
+        // Helper function for SheetJS export
+        function exportWithSheetJS(format, extension) {
+            if (!spreadsheet || !spreadsheet.sheet) {
+                alert("Spreadsheet not initialized");
+                return;
+            }
+            try {
+                // Generate HTML table string from the entire spreadsheet
+                var htmlStr = SocialCalc.SpreadsheetControlCreateSheetHTML(spreadsheet);
+                
+                // Create a temporary DOM element to parse the HTML
+                var tempDiv = document.createElement('div');
+                tempDiv.innerHTML = htmlStr;
+                var tableEle = tempDiv.querySelector('table');
+                
+                if (!tableEle) {
+                    alert("Could not generate table for export.");
+                    return;
+                }
+                
+                // Convert table to workbook
+                var wb = XLSX.utils.table_to_book(tableEle, { sheet: "Sheet1" });
+                
+                // Construct filename
+                var baseName = "@(Model?.Name ?? "Export")";
+                // Strip invalid characters from name
+                baseName = baseName.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || "Export";
+                var filename = baseName + "." + extension;
+                
+                // Export using SheetJS
+                XLSX.writeFile(wb, filename, { bookType: format });
+            } catch (e) {
+                console.error("SheetJS export error:", e);
+                alert("Failed to export: " + e.message);
+            }
+        }
+
         // Export Excel
         document.getElementById('btnExportExcel').addEventListener('click', function() {
-            // console.log removed
-            window.location.href = `/Sheets/Export/@(Model?.Id ?? 0)`;
+            exportWithSheetJS('xlsx', 'xlsx');
         });
 
         // Export CSV
         document.getElementById('btnExportCsv').addEventListener('click', function() {
-            // console.log removed
-            window.location.href = `/Sheets/Export-Csv/@(Model?.Id ?? 0)`;
+            exportWithSheetJS('csv', 'csv');
         });
 
         // Export ODS
         document.getElementById('btnExportOds').addEventListener('click', function() {
-            // console.log removed
-            window.location.href = `/Sheets/Export-Format/@(Model?.Id ?? 0)/ods`;
+            exportWithSheetJS('ods', 'ods');
         });
 
         // Export HTML
         document.getElementById('btnExportHtml').addEventListener('click', function() {
-            // console.log removed
-            window.location.href = `/Sheets/Export-Format/@(Model?.Id ?? 0)/html`;
+            exportWithSheetJS('html', 'html');
         });
 
         // Toast notification function

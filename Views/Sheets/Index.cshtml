@@ -59,11 +59,9 @@
                                         <i class="fab fa-google-drive text-success"></i> Save to Google Drive
                                     </a></li>
                                     <li><hr class="dropdown-divider"></li>
+                                    <li><h6 class="dropdown-header">Legacy Exports</h6></li>
                                     <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'xlsx')">
                                         <i class="fas fa-file-excel"></i> Excel (.xlsx)
-                                    </a></li>
-                                    <li><a class="dropdown-item text-primary" href="#" onclick="exportSheetApi(@sheet.Id)">
-                                        <i class="fas fa-bolt"></i> Excel via API (.xlsx)
                                     </a></li>
                                     <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'csv')">
                                         <i class="fas fa-file-csv"></i> CSV (.csv)
@@ -73,6 +71,17 @@
                                     </a></li>
                                     <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'html')">
                                         <i class="fas fa-code"></i> HTML (.html)
+                                    </a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><h6 class="dropdown-header">API Exports</h6></li>
+                                    <li><a class="dropdown-item text-primary" href="#" onclick="exportSheetApi(@sheet.Id, 'xlsx')">
+                                        <i class="fas fa-bolt"></i> Excel via API (.xlsx)
+                                    </a></li>
+                                    <li><a class="dropdown-item text-primary" href="#" onclick="exportSheetApi(@sheet.Id, 'csv')">
+                                        <i class="fas fa-bolt"></i> CSV via API (.csv)
+                                    </a></li>
+                                    <li><a class="dropdown-item text-primary" href="#" onclick="exportSheetApi(@sheet.Id, 'tsv')">
+                                        <i class="fas fa-bolt"></i> TSV via API (.tsv)
                                     </a></li>
                                 </ul>
                             </div>
@@ -127,8 +136,8 @@
                 <form id="importForm" enctype="multipart/form-data">
                     <div class="mb-3">
                         <label for="fileInput" class="form-label">Select Excel, ODS, or CSV File</label>
-                        <input type="file" class="form-control" id="fileInput" name="file" accept=".xlsx,.xls,.csv,.ods" required />
-                        <small class="text-muted">Supported formats: Excel (.xlsx, .xls), OpenDocument (.ods), CSV</small>
+                        <input type="file" class="form-control" id="fileInput" name="file" accept=".xlsx,.xls,.csv,.ods,.tsv,.txt" required />
+                        <small class="text-muted">Supported formats: Excel (.xlsx, .xls), OpenDocument (.ods), CSV, TSV</small>
                     </div>
                 </form>
             </div>
@@ -181,7 +190,7 @@
             }
         }
 
-        async function exportSheetApi(sheetId) {
+        async function exportSheetApi(sheetId, format) {
             try {
                 // Show a simple loading indicator in the button if possible, or just alert
                 const response = await fetch(`/api/spreadsheet/export/${sheetId}`);
@@ -235,7 +244,14 @@
                     XLSX.utils.book_append_sheet(wb, ws, sheet.name || "Sheet");
                 });
                 
-                XLSX.writeFile(wb, `${data.fileName || 'export'}.xlsx`);
+                const fileName = data.fileName || 'export';
+                if (format === 'csv') {
+                    XLSX.writeFile(wb, `${fileName}.csv`, { bookType: 'csv' });
+                } else if (format === 'tsv') {
+                    XLSX.writeFile(wb, `${fileName}.tsv`, { bookType: 'txt' });
+                } else {
+                    XLSX.writeFile(wb, `${fileName}.xlsx`);
+                }
             } catch (e) {
                 console.error(e);
                 alert("Error exporting via API: " + e.message);

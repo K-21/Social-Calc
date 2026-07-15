@@ -29,7 +29,7 @@
     </div>
 
     <!-- Toolbar -->
-    <div class="card mb-3">
+    <div class="card mb-3" style="position: relative; z-index: 1050;">
         <div class="card-body">
             <div class="btn-group mb-2" role="group">
                 <button type="button" class="btn btn-outline-secondary" id="btnUndo">
@@ -54,6 +54,12 @@
                 <button type="button" class="btn btn-outline-secondary" id="btnExportPDF">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary" id="btnEditorImport" onclick="document.getElementById('editorImportFile').click()">
+                        <i class="fas fa-file-import"></i> Import
+                    </button>
+                    <input type="file" id="editorImportFile" style="display:none;" accept=".xlsx,.xls,.csv,.ods" />
+                </div>
                 <div class="btn-group" role="group">
                     <button type="button" class="btn btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
                         <i class="fas fa-download"></i> Export
@@ -323,6 +329,73 @@
         // Export HTML
         document.getElementById('btnExportHtml').addEventListener('click', function() {
             exportWithSheetJS('html', 'html');
+        });
+
+        // Editor In-Place Import
+        document.getElementById('editorImportFile').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const reader = new FileReader();
+            reader.onload = function(evt) {
+                try {
+                    const data = new Uint8Array(evt.target.result);
+                    const wb = XLSX.read(data, {type: 'array'});
+                    
+                    const sheetName = wb.SheetNames[0];
+                    const ws = wb.Sheets[sheetName];
+                    
+                    let savestr = "version:1.5\n";
+                    if (ws['!ref']) {
+                        const range = XLSX.utils.decode_range(ws['!ref']);
+                        for(let R = range.s.r; R <= range.e.r; ++R) {
+                            for(let C = range.s.c; C <= range.e.c; ++C) {
+                                const cellRef = XLSX.utils.encode_cell({c:C, r:R});
+                                const cell = ws[cellRef];
+                                if (!cell) continue;
+                                
+                                const scCol = XLSX.utils.encode_col(C);
+                                const scRow = R + 1;
+                                const val = cell.v;
+                                
+                                if (typeof val === 'number') {
+                                    savestr += `cell:${scCol}${scRow}:v:${val}\n`;
+                                } else {
+                                    let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
+                                    savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
+                                }
+                            }
+                        }
+                        savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
+                    }
+                    
+                    const socialCalcJson = JSON.stringify({
+                        numsheets: 1,
+                        currentname: sheetName,
+                        sheetArr: {
+                            "Sheet0": {
+                                name: sheetName,
+                                sheetstr: { savestr: savestr }
+                            }
+                        },
+                        currentid: "Sheet0"
+                    });
+                    
+                    // Directly load it into the editor
+                    SocialCalc.WorkBookControlLoad(socialCalcJson);
+                    spreadsheet.ExecuteCommand('redisplay', '');
+                    
+                    // Trigger save to backend
+                    document.getElementById('btnSave').click();
+                    
+                } catch(err) {
+                    alert("Error parsing Excel file: " + err.message);
+                } finally {
+                    // Reset input
+                    document.getElementById('editorImportFile').value = '';
+                }
+            };
+            reader.readAsArrayBuffer(file);
         });
 
         // Toast notification function

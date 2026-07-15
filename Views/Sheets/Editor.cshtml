@@ -29,9 +29,9 @@
     </div>
 
     <!-- Toolbar -->
-    <div class="card mb-3" style="position: relative; z-index: 1050; overflow: visible;">
-        <div class="card-body d-flex flex-wrap align-items-center gap-2">
-            <div class="btn-group" role="group">
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="btn-group mb-2" role="group">
                 <button type="button" class="btn btn-outline-secondary" id="btnUndo">
                     <i class="fas fa-undo"></i> Undo
                 </button>
@@ -39,7 +39,7 @@
                     <i class="fas fa-redo"></i> Redo
                 </button>
             </div>
-            <div class="btn-group" role="group">
+            <div class="btn-group ms-2 mb-2" role="group">
                 <button type="button" class="btn btn-outline-secondary" id="btnBold">
                     <i class="fas fa-bold"></i>
                 </button>
@@ -50,7 +50,7 @@
                     <i class="fas fa-underline"></i>
                 </button>
             </div>
-            <div class="btn-group" role="group">
+            <div class="btn-group ms-2 mb-2" role="group">
                 <button type="button" class="btn btn-outline-secondary" id="btnExportPDF">
                     <i class="fas fa-file-pdf"></i> PDF
                 </button>
@@ -65,9 +65,6 @@
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="#" id="btnExportExcel">
                             <i class="fas fa-file-excel"></i> Excel (.xlsx)
-                        </a></li>
-                        <li><a class="dropdown-item" href="#" id="btnExportExcelOld">
-                            <i class="fas fa-file-excel"></i> Excel (.xls)
                         </a></li>
                         <li><a class="dropdown-item" href="#" id="btnExportCsv">
                             <i class="fas fa-file-csv"></i> CSV (.csv)
@@ -84,16 +81,13 @@
         </div>
     </div>
 
-    <!-- Spreadsheet Area -->
-    <div class="w-100 flex-grow-1" style="min-height: 400px; display: flex; flex-direction: column;">
-        <!-- WorkbookControl - for sheet tabs -->
-        <div id="workbookControl" style="background-color:#80A9F3; width: 100%;">
-        </div>
+    <!-- WorkbookControl - for sheet tabs (same as Python) -->
+    <div id="workbookControl" style="background-color:#80A9F3;">
+    </div>
 
-        <!-- Spreadsheet Container -->
-        <div id="socialcalcContainer" style="width: 100%; flex-grow: 1; border: 1px solid #ddd; margin-bottom: 10px; position: relative;">
-            <!-- SocialCalc will be loaded here -->
-        </div>
+    <!-- Spreadsheet Container (same as Python's tableeditor div) -->
+    <div id="socialcalcContainer" style="width: 100%; height: 600px; border: 1px solid #ddd; margin: 8px 0px 10px 0px;">
+        <!-- SocialCalc will be loaded here -->
     </div>
 
     <!-- Hidden textarea with sheet data (same as Python version) -->
@@ -128,18 +122,18 @@
 @section Scripts {
     <!-- SocialCalc Libraries - Load in correct order (same as Python importcollabload.html) -->
     <script src="~/js/jquery.min.js"></script>
-    <script src="~/js/socialcalcconstants.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalc-3.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalctouch.js" asp-append-version="true" onerror="/* socialcalctouch.js not found, continuing... */"></script>
-    <script src="~/js/socialcalctableeditor.js" asp-append-version="true"></script>
-    <script src="~/js/formatnumber2.js" asp-append-version="true" onerror="/* formatnumber2.js not found, continuing... */"></script>
-    <script src="~/js/formula1.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalcpopup.js" asp-append-version="true" onerror="/* socialcalcpopup.js not found, continuing... */"></script>
-    <script src="~/js/socialcalcspreadsheetcontrol.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalcworkbook.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalcworkbookcontrol.js" asp-append-version="true"></script>
-    <script src="~/js/socialcalcimages.js" asp-append-version="true"></script>
-    <script src="~/js/json2.js" asp-append-version="true" onerror="/* json2.js not found, continuing... */"></script>
+    <script src="~/js/socialcalcconstants.js"></script>
+    <script src="~/js/socialcalc-3.js"></script>
+    <script src="~/js/socialcalctouch.js" onerror="/* socialcalctouch.js not found, continuing... */"></script>
+    <script src="~/js/socialcalctableeditor.js"></script>
+    <script src="~/js/formatnumber2.js" onerror="/* formatnumber2.js not found, continuing... */"></script>
+    <script src="~/js/formula1.js"></script>
+    <script src="~/js/socialcalcpopup.js" onerror="/* socialcalcpopup.js not found, continuing... */"></script>
+    <script src="~/js/socialcalcspreadsheetcontrol.js"></script>
+    <script src="~/js/socialcalcworkbook.js"></script>
+    <script src="~/js/socialcalcworkbookcontrol.js"></script>
+    <script src="~/js/socialcalcimages.js"></script>
+    <script src="~/js/json2.js" onerror="/* json2.js not found, continuing... */"></script>
 
     <script>
         // Wait for all scripts to load
@@ -215,80 +209,20 @@
             }
         });
 
-        // Save Button
+        // Save Button - use WorkBookControlSaveSheet like Python
         document.getElementById('btnSave').addEventListener('click', function() {
             if (!spreadsheet) {
                 alert('Spreadsheet not initialized');
                 return;
             }
-
-            // Synchronously commit any active cell edit directly into the sheet object.
-            // This bypasses SocialCalc's async timer queue which causes data loss when
-            // clicking Save while still typing in a cell.
-            try {
-                var editor = spreadsheet.editor;
-                if (editor && editor.state === "input") {
-                    var text = "";
-                    if (editor.inputBox && typeof editor.inputBox.GetText === "function") {
-                        text = editor.inputBox.GetText();
-                    }
-                    var coord = (editor.workingvalues && editor.workingvalues.ecoord)
-                                || (editor.ecell && editor.ecell.coord);
-                    if (coord) {
-                        var sheetobj = editor.context.sheetobj;
-                        var oldvalue = SocialCalc.GetCellContents(sheetobj, coord) + "";
-                        if (text !== oldvalue) {
-                            // Determine value type (mirrors EditorSaveEdit logic exactly)
-                            var type = "text t";
-                            var fch = text.charAt(0);
-                            if (fch === "=" && text.indexOf("\n") === -1) {
-                                type = "formula";
-                                text = text.substring(1);
-                            } else if (fch === "'") {
-                                type = "text t";
-                                text = text.substring(1);
-                            } else if (text.length === 0) {
-                                type = "empty";
-                            } else {
-                                var vi = SocialCalc.DetermineValueType(text);
-                                if (vi.type === "n" && text === (vi.value + "")) {
-                                    type = "value n";
-                                } else if (vi.type.charAt(0) === "t") {
-                                    type = "text " + vi.type;
-                                } else if (vi.type === "") {
-                                    type = "text t";
-                                } else {
-                                    type = "constant " + vi.type + " " + vi.value;
-                                }
-                            }
-                            if (type.charAt(0) === "t") {
-                                text = SocialCalc.encodeForSave(text);
-                            }
-                            var cmdline = "set " + coord + " " + type + " " + text;
-                            // Execute synchronously — no timer queue
-                            SocialCalc.ExecuteSheetCommand(
-                                sheetobj,
-                                new SocialCalc.Parse(cmdline),
-                                false
-                            );
-                            // Ensure the sheet is recalculated so formulas get their calculated value before save
-                            SocialCalc.ExecuteSheetCommand(
-                                sheetobj,
-                                new SocialCalc.Parse("recalc"),
-                                false
-                            );
-                        }
-                    }
-                }
-            } catch (e) { console.warn("Error committing active cell:", e); }
-
-            // Now safely grab data and send to server
-            window.isSaving = true;
-            document.getElementById('btnSave').disabled = true;
-            var backBtn = document.querySelector('a[href="/Sheets"]');
-            if (backBtn) backBtn.style.pointerEvents = 'none';
+            
+            // Use WorkBookControlSaveSheet to save in workbook format (same as Python)
+            const sheetData = SocialCalc.WorkBookControlSaveSheet();
+            @* console.log('Data to save:', sheetData);
+            // data length log removed
+             *@
+            // Indicate manual save started
             showSavingIndicator(true);
-            var sheetData = SocialCalc.WorkBookControlSaveSheet();
 
             fetch(`/Sheets/Save/@(Model?.Id ?? 0)`, {
                 method: 'POST',
@@ -300,7 +234,10 @@
             })
             .then(r => r.json())
             .then(data => {
+             //   console.log('Save response:', data);
                 if (data.success) {
+                //    console.log('Save successful!');
+                    // Update autosave state
                     lastSavedSnapshot = sheetData;
                     unsavedChanges = false;
                     showSavedIndicator();
@@ -312,56 +249,11 @@
             })
             .catch(e => {
                 console.error('Save error:', e);
-                alert('Error saving sheet.');
+                alert('Error: ' + e.message);
             })
             .finally(() => {
-                window.isSaving = false;
-                document.getElementById('btnSave').disabled = false;
-                if (backBtn) backBtn.style.pointerEvents = 'auto';
                 showSavingIndicator(false);
             });
-        });
-
-        // Warn user if they try to leave the page while saving
-        window.addEventListener('beforeunload', function (e) {
-            if (window.isSaving) {
-                var confirmationMessage = 'A save is currently in progress. If you leave now, your changes might not be saved.';
-                (e || window.event).returnValue = confirmationMessage;
-                return confirmationMessage;
-            }
-        });
-
-
-        // Toolbar Formatting Buttons - use workbook's active editor
-        function wbExec(cmdstr) {
-            try {
-                var ctrl = SocialCalc.GetCurrentWorkBookControl();
-                if (ctrl && ctrl.workbook && ctrl.workbook.spreadsheet) {
-                    ctrl.workbook.spreadsheet.ExecuteCommand(cmdstr, '');
-                } else if (spreadsheet) {
-                    spreadsheet.ExecuteCommand(cmdstr, '');
-                }
-            } catch(e) { console.warn('Toolbar command error:', e); }
-        }
-
-        document.getElementById('btnUndo').addEventListener('click', function() {
-            wbExec('undo');
-        });
-
-        document.getElementById('btnRedo').addEventListener('click', function() {
-            wbExec('redo');
-        });
-
-        document.getElementById('btnBold').addEventListener('click', function() {
-            wbExec('set %C font normal bold * *');
-        });
-
-        document.getElementById('btnItalic').addEventListener('click', function() {
-            wbExec('set %C font italic normal * *');
-        });
-
-        document.getElementById('btnUnderline').addEventListener('click', function() {
-            wbExec('set %C textvalueformat text-custom:<u>@@s</u>');
         });
 
         // Export PDF
@@ -378,11 +270,6 @@
         document.getElementById('btnExportExcel').addEventListener('click', function() {
             // console.log removed
             window.location.href = `/Sheets/Export/@(Model?.Id ?? 0)`;
-        });
-
-        // Export Excel (Old Format)
-        document.getElementById('btnExportExcelOld').addEventListener('click', function() {
-            window.location.href = `/Sheets/Export-Format/@(Model?.Id ?? 0)/xls`;
         });
 
         // Export CSV

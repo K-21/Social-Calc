@@ -1,4 +1,4 @@
-using SocialCalc.Web.Models;
+﻿using SocialCalc.Web.Models;
 
 namespace SocialCalc.Web.Services;
 
@@ -66,7 +66,7 @@ public class ExcelService : IExcelService
     {
         try
         {
-            if (!IsValidExcelFileAsync(fileStream).Result)
+            if (!await IsValidExcelFileAsync(fileStream))
             {
                 _logger.LogWarning($"Invalid Excel file: {fileName}");
                 return null;
@@ -139,3 +139,4 @@ public class ExcelService : IExcelService
         }
     }
 }
+

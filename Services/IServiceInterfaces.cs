@@ -1,4 +1,4 @@
-using SocialCalc.Web.Models;
+﻿using SocialCalc.Web.Models;
 
 namespace SocialCalc.Web.Services;
 
@@ -26,10 +26,8 @@ public interface ISheetService
     Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 50);
     Task<int> GetTotalUserSheetsAsync(int userId);
     Task<Sheet?> GetSheetAsync(int sheetId, int userId);
-    Task<Sheet?> GetSheetByIdAsync(int sheetId);
+    Task<Sheet?> GetSheetByIdAsync(int sheetId, int userId);
     Task<bool> DeleteSheetAsync(int sheetId, int userId);
-    Task<Sheet?> ImportSheetAsync(int userId, string fileName, string data);
-    Task<string> ExportToPDFAsync(Sheet sheet);
 }
 
 /// <summary>
@@ -53,3 +51,4 @@ public interface IEmailService
     Task<bool> SendWelcomeEmailAsync(string email, string userName);
     Task<bool> SendSheetSharedNotificationAsync(string email, string sheetName);
 }
+

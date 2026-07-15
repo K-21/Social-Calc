@@ -35,7 +35,7 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<int>, i
         // Sheet Configuration
         modelBuilder.Entity<Sheet>(entity =>
         {
-            entity.HasIndex(s => s.UserId);
+            entity.HasIndex(s => new { s.UserId, s.UpdatedAt });
             entity.HasIndex(s => s.CreatedAt);
             entity.Property(s => s.Data); // Allow large JSON data
         });
@@ -48,3 +48,4 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<int>, i
         });
     }
 }
+

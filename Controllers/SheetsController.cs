@@ -1,4 +1,5 @@
 using Microsoft.AspNetCore.Authorization;
+using System.Security.Claims;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using SocialCalc.Web.Models;
@@ -41,15 +42,15 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return RedirectToAction("Login", "Auth");
             }
 
             int pageSize = _configuration.GetValue<int>("AppSettings:DashboardPageSize", 10);
-            var totalSheets = await _sheetService.GetTotalUserSheetsAsync(user.Id);
-            var sheets = await _sheetService.GetUserSheetsAsync(user.Id, page, pageSize);
+            var totalSheets = await _sheetService.GetTotalUserSheetsAsync(userId);
+            var sheets = await _sheetService.GetUserSheetsAsync(userId, page, pageSize);
 
             ViewBag.CurrentPage = page;
             ViewBag.TotalPages = (int)Math.Ceiling((double)totalSheets / pageSize);
@@ -70,13 +71,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return RedirectToAction("Login", "Auth");
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -97,13 +98,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -142,13 +143,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.SaveSheetAsync(user.Id, request.FileName, "{}");
+            var sheet = await _sheetService.SaveSheetAsync(userId, request.FileName, "{\"numsheets\":1,\"currentname\":\"Sheet1\",\"sheetArr\":{\"Sheet1\":{\"name\":\"Sheet1\",\"sheetstr\":{\"savestr\":\"version:1.5\\nsheet:c:1:r:1:tvf:1\\n\"}}},\"currentid\":\"Sheet1\"}");
             if (sheet == null)
             {
                 return StatusCode(500, new { success = false, message = "Error creating sheet" });
@@ -169,8 +170,8 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null) return Unauthorized();
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId)) return Unauthorized();
 
             if (string.IsNullOrWhiteSpace(request?.FileName))
             {
@@ -183,7 +184,7 @@ public class SheetsController : Controller
                 return BadRequest(new { success = false, message = "Invalid filename" });
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null) return NotFound();
 
             sheet.FileName = sanitizedFileName;
@@ -212,18 +213,18 @@ public class SheetsController : Controller
         _logger.LogInformation($"Delete request received for sheet ID: {id}");
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 _logger.LogWarning($"Unauthorized delete attempt for sheet {id}");
                 return Unauthorized();
             }
 
-            _logger.LogInformation($"Attempting to delete sheet {id} for user {user.Id}");
-            var success = await _sheetService.DeleteSheetAsync(id, user.Id);
+            _logger.LogInformation($"Attempting to delete sheet {id} for user {userId}");
+            var success = await _sheetService.DeleteSheetAsync(id, userId);
             if (!success)
             {
-                _logger.LogWarning($"Sheet {id} not found or not owned by user {user.Id}");
+                _logger.LogWarning($"Sheet {id} not found or not owned by user {userId}");
                 return NotFound();
             }
 
@@ -237,14 +238,15 @@ public class SheetsController : Controller
         }
     }
 
+    // LEGACY: Use /api/spreadsheet/import instead
     [HttpPost("import")]
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Import([FromForm] IFormFile file)
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
@@ -257,14 +259,14 @@ public class SheetsController : Controller
             var fileName = Path.GetFileNameWithoutExtension(file.FileName);
             using (var stream = file.OpenReadStream())
             {
-                var sheet = await _excelService.ImportFromExcelAsync(stream, user.Id, fileName);
+                var sheet = await _excelService.ImportFromExcelAsync(stream, userId, fileName);
                 if (sheet == null)
                 {
                     return StatusCode(500, new { success = false, message = "Error importing file" });
                 }
 
                 // Save the imported sheet to database
-                var savedSheet = await _sheetService.SaveSheetAsync(user.Id, sheet.FileName, sheet.Data);
+                var savedSheet = await _sheetService.SaveSheetAsync(userId, sheet.FileName, sheet.Data);
                 if (savedSheet == null)
                 {
                     return StatusCode(500, new { success = false, message = "Error saving imported sheet" });
@@ -286,13 +288,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -319,13 +321,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -347,18 +349,19 @@ public class SheetsController : Controller
         }
     }
 
+    // LEGACY: Use JS export or /api/spreadsheet/export/{id} instead
     [HttpGet("export-format/{id}/{format}")]
     public async Task<IActionResult> ExportFormat(int id, string format)
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -400,13 +403,13 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null)
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null)
             {
                 return NotFound();
@@ -434,8 +437,8 @@ public class SheetsController : Controller
     {
         try
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user == null) return Unauthorized();
+            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId)) return Unauthorized();
 
             // 1. Check if user is authenticated with Google and has a token
             var authResult = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
@@ -455,7 +458,7 @@ public class SheetsController : Controller
             }
 
             // 2. Get the sheet data as Excel stream
-            var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null) return NotFound();
 
             var excelStream = await _excelService.ExportToExcelAsync(sheet);

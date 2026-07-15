@@ -40,7 +40,7 @@ public class AuthController : Controller
             var user = await _userManager.GetUserAsync(User);
             if (user != null && user.IsActive)
             {
-                _logger.LogInformation($"User {user.Email} already authenticated, redirecting to sheets");
+                _logger.LogInformation($"User {user.Id} already authenticated, redirecting to sheets");
                 return RedirectToAction("Index", "Sheets");
             }
             else
@@ -71,7 +71,7 @@ public class AuthController : Controller
             await _signInManager.SignInAsync(user, isPersistent: true);
             await _authService.UpdateLastLoginAsync(user);
 
-            _logger.LogInformation($"User logged in: {email}");
+            _logger.LogInformation($"User logged in: {user.Id}");
             return Redirect("/sheets");
         }
         catch (Exception ex)
@@ -140,7 +140,7 @@ public class AuthController : Controller
                 await _userManager.UpdateAsync(user);
             }
 
-            _logger.LogInformation($"New user registered: {email}");
+            _logger.LogInformation($"New user registered: {user?.Id}");
             TempData["SuccessMessage"] = "Registration successful! Please log in.";
             return RedirectToAction("Login");
         }

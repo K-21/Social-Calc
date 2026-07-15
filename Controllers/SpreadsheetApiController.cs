@@ -8,6 +8,8 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Security.Claims;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
 
@@ -24,21 +26,21 @@ namespace SocialCalc.Web.Controllers
 
         public SpreadsheetApiController(
             ISheetService sheetService,
-            UserManager<User> userManager,
             ILogger<SpreadsheetApiController> logger)
         {
             _sheetService = sheetService;
-            _userManager = userManager;
             _logger = logger;
         }
 
         [HttpPost("import")]
+        [EnableRateLimiting("ApiPolicy")]
+        [ValidateAntiForgeryToken]
         public async Task<IActionResult> Import([FromBody] SpreadsheetImportDto request)
         {
             try
             {
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
+                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
                 {
                     return Unauthorized();
                 }
@@ -50,7 +52,7 @@ namespace SocialCalc.Web.Controllers
                 if (request.TargetSheetId.HasValue)
                 {
                     // Import into existing sheet
-                    sheet = await _sheetService.GetSheetAsync(request.TargetSheetId.Value, user.Id);
+                    sheet = await _sheetService.GetSheetAsync(request.TargetSheetId.Value, userId);
                     if (sheet == null)
                     {
                         return NotFound(new { success = false, message = "Target sheet not found" });
@@ -67,7 +69,7 @@ namespace SocialCalc.Web.Controllers
                 else
                 {
                     // Create a new sheet
-                    sheet = await _sheetService.SaveSheetAsync(user.Id, request.FileName, socialCalcJson);
+                    sheet = await _sheetService.SaveSheetAsync(userId, request.FileName, socialCalcJson);
                     if (sheet == null)
                     {
                         return StatusCode(500, new { success = false, message = "Failed to create new sheet" });
@@ -78,23 +80,24 @@ namespace SocialCalc.Web.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error importing spreadsheet via API");
-                return StatusCode(500, new { success = false, message = "Error importing spreadsheet: " + ex.Message });
+                _logger.LogError(ex, "Error importing spreadsheet via API for user {UserId}", User.FindFirstValue(ClaimTypes.NameIdentifier));
+                return StatusCode(500, new { success = false, message = "Error importing spreadsheet" });
             }
         }
 
         [HttpGet("export/{id}")]
+        [EnableRateLimiting("ApiPolicy")]
         public async Task<IActionResult> Export(int id)
         {
             try
             {
-                var user = await _userManager.GetUserAsync(User);
-                if (user == null)
+                var userIdClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+                if (string.IsNullOrEmpty(userIdClaim) || !int.TryParse(userIdClaim, out int userId))
                 {
                     return Unauthorized();
                 }
 
-                var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+                var sheet = await _sheetService.GetSheetAsync(id, userId);
                 if (sheet == null)
                 {
                     return NotFound(new { success = false, message = "Sheet not found" });
@@ -138,8 +141,8 @@ namespace SocialCalc.Web.Controllers
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Error exporting spreadsheet via API");
-                return StatusCode(500, new { success = false, message = "Error exporting spreadsheet: " + ex.Message });
+                _logger.LogError(ex, "Error exporting spreadsheet via API for user {UserId}", User.FindFirstValue(ClaimTypes.NameIdentifier));
+                return StatusCode(500, new { success = false, message = "Error exporting spreadsheet" });
             }
         }
 

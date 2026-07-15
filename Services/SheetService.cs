@@ -66,7 +66,7 @@ public class SheetService : ISheetService
         try
         {
             var sheets = await _context.Sheets
-                .Where(s => s.UserId == userId && !s.IsDeleted)
+                .Where(s => s.UserId == userId)
                 .OrderByDescending(s => s.UpdatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
@@ -85,7 +85,7 @@ public class SheetService : ISheetService
     {
         try
         {
-            return await _context.Sheets.CountAsync(s => s.UserId == userId && !s.IsDeleted);
+            return await _context.Sheets.CountAsync(s => s.UserId == userId);
         }
         catch (Exception ex)
         {
@@ -99,7 +99,7 @@ public class SheetService : ISheetService
         try
         {
             var sheet = await _context.Sheets
-                .FirstOrDefaultAsync(s => s.Id == sheetId && s.UserId == userId && !s.IsDeleted);
+                .FirstOrDefaultAsync(s => s.Id == sheetId && s.UserId == userId);
 
             return sheet;
         }
@@ -110,12 +110,12 @@ public class SheetService : ISheetService
         }
     }
 
-    public async Task<Sheet?> GetSheetByIdAsync(int sheetId)
+    public async Task<Sheet?> GetSheetByIdAsync(int sheetId, int userId)
     {
         try
         {
             var sheet = await _context.Sheets
-                .FirstOrDefaultAsync(s => s.Id == sheetId && !s.IsDeleted);
+                .FirstOrDefaultAsync(s => s.Id == sheetId && s.UserId == userId);
 
             return sheet;
         }
@@ -152,28 +152,6 @@ public class SheetService : ISheetService
         }
     }
 
-    public async Task<Sheet?> ImportSheetAsync(int userId, string fileName, string data)
-    {
-        try
-        {
-            // Validate JSON data
-            if (string.IsNullOrWhiteSpace(data))
-            {
-                _logger.LogWarning($"Invalid data for import: {fileName}");
-                return null;
-            }
 
-            return await SaveSheetAsync(userId, fileName, data);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error importing sheet: {ex.Message}");
-            return null;
-        }
-    }
-
-    public Task<string> ExportToPDFAsync(Sheet sheet)
-    {
-        return Task.FromResult("Error: PDF Export is not yet available.");
-    }
 }
+

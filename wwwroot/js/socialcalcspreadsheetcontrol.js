@@ -1964,7 +1964,7 @@ SocialCalc.SpreadsheetCmdTable = {
 SocialCalc.SpreadsheetControlExecuteCommand = function(obj, combostr, sstr) {
 
    var i, commands;
-   var spreadsheet = SocialCalc.GetSpreadsheetControlObject();
+   var spreadsheet = obj || SocialCalc.GetSpreadsheetControlObject();
    var eobj = spreadsheet.editor;
 
    var str = {};

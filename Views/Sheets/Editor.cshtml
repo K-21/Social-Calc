@@ -342,10 +342,11 @@
                     const data = new Uint8Array(evt.target.result);
                     const wb = XLSX.read(data, {type: 'array'});
                     
-                    let sheetArr = {};
+                    let sheetsData = [];
                     wb.SheetNames.forEach((sheetName, index) => {
                         const ws = wb.Sheets[sheetName];
-                        let savestr = "version:1.5\n";
+                        let cells = [];
+                        
                         if (ws['!ref']) {
                             const range = XLSX.utils.decode_range(ws['!ref']);
                             for(let R = range.s.r; R <= range.e.r; ++R) {
@@ -354,44 +355,85 @@
                                     const cell = ws[cellRef];
                                     if (!cell) continue;
                                     
-                                    const scCol = XLSX.utils.encode_col(C);
-                                    const scRow = R + 1;
-                                    const val = cell.v;
-                                    
-                                    if (typeof val === 'number') {
-                                        savestr += `cell:${scCol}${scRow}:v:${val}\n`;
-                                    } else {
-                                        let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
-                                        savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
-                                    }
+                                    cells.push({
+                                        r: R,
+                                        c: C,
+                                        v: cell.v,
+                                        t: (typeof cell.v === 'number') ? 'n' : 's',
+                                        f: cell.f || null
+                                    });
                                 }
                             }
-                            savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
                         }
-                        sheetArr["Sheet" + index] = {
+                        
+                        let merges = [];
+                        if (ws['!merges']) {
+                            ws['!merges'].forEach(m => {
+                                merges.push({
+                                    s: { r: m.s.r, c: m.s.c },
+                                    e: { r: m.e.r, c: m.e.c }
+                                });
+                            });
+                        }
+                        
+                        let cols = [];
+                        if (ws['!cols']) {
+                            ws['!cols'].forEach((c, idx) => {
+                                if (c && c.wch) {
+                                    cols.push({ index: idx, size: c.wch * 7 });
+                                }
+                            });
+                        }
+                        
+                        let rows = [];
+                        if (ws['!rows']) {
+                            ws['!rows'].forEach((r, idx) => {
+                                if (r && r.hpt) {
+                                    rows.push({ index: idx, size: r.hpt });
+                                }
+                            });
+                        }
+                        
+                        sheetsData.push({
                             name: sheetName,
-                            sheetstr: { savestr: savestr }
-                        };
+                            cells: cells,
+                            merges: merges,
+                            cols: cols,
+                            rows: rows
+                        });
                     });
                     
-                    const socialCalcJson = JSON.stringify({
-                        numsheets: wb.SheetNames.length,
-                        currentname: wb.SheetNames[0],
-                        sheetArr: sheetArr,
-                        currentid: "Sheet0"
+                    const payload = {
+                        fileName: "@(Model?.FileName ?? "Imported Sheet")",
+                        targetSheetId: sheetId,
+                        sheets: sheetsData
+                    };
+                    
+                    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                    
+                    fetch('/api/spreadsheet/import', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'RequestVerificationToken': token
+                        },
+                        body: JSON.stringify(payload)
+                    })
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            window.location.reload();
+                        } else {
+                            alert("Error importing sheet: " + (data.message || "Unknown error"));
+                        }
+                    })
+                    .catch(err => {
+                        alert('API Error: ' + err.message);
                     });
-                    
-                    // Directly load it into the editor
-                    SocialCalc.WorkBookControlLoad(socialCalcJson);
-                    spreadsheet.ExecuteCommand('redisplay', '');
-                    
-                    // Trigger save to backend
-                    document.getElementById('btnSave').click();
                     
                 } catch(err) {
                     alert("Error parsing Excel file: " + err.message);
                 } finally {
-                    // Reset input
                     document.getElementById('editorImportFile').value = '';
                 }
             };

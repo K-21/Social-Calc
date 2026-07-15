@@ -261,10 +261,11 @@
                     const data = new Uint8Array(e.target.result);
                     const wb = XLSX.read(data, {type: 'array'});
                     
-                    let sheetArr = {};
+                    let sheetsData = [];
                     wb.SheetNames.forEach((sheetName, index) => {
                         const ws = wb.Sheets[sheetName];
-                        let savestr = "version:1.5\n";
+                        let cells = [];
+                        
                         if (ws['!ref']) {
                             const range = XLSX.utils.decode_range(ws['!ref']);
                             for(let R = range.s.r; R <= range.e.r; ++R) {
@@ -273,67 +274,77 @@
                                     const cell = ws[cellRef];
                                     if (!cell) continue;
                                     
-                                    const scCol = XLSX.utils.encode_col(C);
-                                    const scRow = R + 1;
-                                    const val = cell.v;
-                                    
-                                    if (typeof val === 'number') {
-                                        savestr += `cell:${scCol}${scRow}:v:${val}\n`;
-                                    } else {
-                                        let strVal = String(val).replace(/\\/g, '\\b').replace(/:/g, '\\c').replace(/\n/g, '\\n');
-                                        savestr += `cell:${scCol}${scRow}:t:${strVal}\n`;
-                                    }
+                                    cells.push({
+                                        r: R,
+                                        c: C,
+                                        v: cell.v,
+                                        t: (typeof cell.v === 'number') ? 'n' : 's',
+                                        f: cell.f || null
+                                    });
                                 }
                             }
-                            savestr += `sheet:c:${range.e.c + 1}:r:${range.e.r + 1}:tvf:1\n`;
                         }
-                        sheetArr["Sheet" + index] = {
+                        
+                        let merges = [];
+                        if (ws['!merges']) {
+                            ws['!merges'].forEach(m => {
+                                merges.push({
+                                    s: { r: m.s.r, c: m.s.c },
+                                    e: { r: m.e.r, c: m.e.c }
+                                });
+                            });
+                        }
+                        
+                        let cols = [];
+                        if (ws['!cols']) {
+                            ws['!cols'].forEach((c, idx) => {
+                                if (c && c.wch) {
+                                    cols.push({ index: idx, size: c.wch * 7 }); // Roughly convert char width to px
+                                }
+                            });
+                        }
+                        
+                        let rows = [];
+                        if (ws['!rows']) {
+                            ws['!rows'].forEach((r, idx) => {
+                                if (r && r.hpt) {
+                                    rows.push({ index: idx, size: r.hpt });
+                                }
+                            });
+                        }
+                        
+                        sheetsData.push({
                             name: sheetName,
-                            sheetstr: { savestr: savestr }
-                        };
+                            cells: cells,
+                            merges: merges,
+                            cols: cols,
+                            rows: rows
+                        });
                     });
                     
-                    // Build JSON Wrapper expected by Editor
-                    const socialCalcJson = JSON.stringify({
-                        numsheets: wb.SheetNames.length,
-                        currentname: wb.SheetNames[0],
-                        sheetArr: sheetArr,
-                        currentid: "Sheet0"
-                    });
-                    
-                    // 1. Create a blank sheet
-                    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
                     const cleanFileName = file.name.replace(/[^a-zA-Z0-9 _\-\.]/g, "").trim() || "Imported Sheet";
+                    const payload = {
+                        fileName: cleanFileName,
+                        sheets: sheetsData
+                    };
                     
-                    fetch('/Sheets/Create', {
+                    const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                    
+                    fetch('/api/spreadsheet/import', {
                         method: 'POST',
                         headers: {
                             'Content-Type': 'application/json',
                             'RequestVerificationToken': token
                         },
-                        body: JSON.stringify({ FileName: cleanFileName })
+                        body: JSON.stringify(payload)
                     })
                     .then(r => r.json())
-                    .then(createData => {
-                        if (createData.success) {
-                            // 2. Save the SheetJS data to this new sheet
-                            return fetch(`/Sheets/Save/${createData.id}`, {
-                                method: 'POST',
-                                headers: {
-                                    'Content-Type': 'application/json',
-                                    'RequestVerificationToken': token
-                                },
-                                body: JSON.stringify({ Data: socialCalcJson })
-                            }).then(r => r.json()).then(saveData => {
-                                if (saveData.success) {
-                                    bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
-                                    window.location.href = `/Sheets/Editor/${createData.id}`;
-                                } else {
-                                    alert("Error saving imported data.");
-                                }
-                            });
+                    .then(data => {
+                        if (data.success) {
+                            bootstrap.Modal.getInstance(document.getElementById('importModal')).hide();
+                            window.location.href = `/Sheets/Editor/${data.id}`;
                         } else {
-                            alert("Error creating sheet.");
+                            alert("Error creating sheet: " + (data.message || "Unknown error"));
                         }
                     })
                     .catch(err => {

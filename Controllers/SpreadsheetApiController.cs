@@ -83,6 +83,174 @@ namespace SocialCalc.Web.Controllers
             }
         }
 
+        [HttpGet("export/{id}")]
+        public async Task<IActionResult> Export(int id)
+        {
+            try
+            {
+                var user = await _userManager.GetUserAsync(User);
+                if (user == null)
+                {
+                    return Unauthorized();
+                }
+
+                var sheet = await _sheetService.GetSheetAsync(id, user.Id);
+                if (sheet == null)
+                {
+                    return NotFound(new { success = false, message = "Sheet not found" });
+                }
+
+                // Parse the SocialCalc JSON wrapper
+                var jsonDoc = JsonDocument.Parse(sheet.Data);
+                var root = jsonDoc.RootElement;
+                
+                var dto = new SpreadsheetImportDto
+                {
+                    FileName = sheet.FileName
+                };
+
+                if (root.TryGetProperty("sheetArr", out var sheetArr))
+                {
+                    foreach (var sheetProp in sheetArr.EnumerateObject())
+                    {
+                        var sheetObj = sheetProp.Value;
+                        string sheetName = sheetObj.TryGetProperty("name", out var nameProp) ? nameProp.GetString() : sheetProp.Name;
+                        string savestr = "";
+                        
+                        if (sheetObj.TryGetProperty("sheetstr", out var sheetstrObj) && 
+                            sheetstrObj.TryGetProperty("savestr", out var savestrProp))
+                        {
+                            savestr = savestrProp.GetString();
+                        }
+                        else if (sheetObj.TryGetProperty("savestr", out var sProp)) // Sometimes flat
+                        {
+                            savestr = sProp.GetString();
+                        }
+
+                        if (!string.IsNullOrEmpty(savestr))
+                        {
+                            dto.Sheets.Add(ParseSocialCalcSaveStr(sheetName, savestr));
+                        }
+                    }
+                }
+
+                return Ok(dto);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error exporting spreadsheet via API");
+                return StatusCode(500, new { success = false, message = "Error exporting spreadsheet: " + ex.Message });
+            }
+        }
+
+        private SheetImportDto ParseSocialCalcSaveStr(string name, string savestr)
+        {
+            var sheet = new SheetImportDto { Name = name };
+            var lines = savestr.Split('\n', StringSplitOptions.RemoveEmptyEntries);
+
+            foreach (var line in lines)
+            {
+                var parts = line.Split(':');
+                if (parts.Length < 2) continue;
+
+                if (parts[0] == "cell" && parts.Length >= 4)
+                {
+                    // cell:A1:vtf:n:10:SUM(...)
+                    string coord = parts[1];
+                    (int c, int r) = DecodeCoord(coord);
+
+                    string type = parts[2];
+                    if (type == "v" || type == "t" || type == "vtf" || type == "vtc")
+                    {
+                        var cellDto = new CellImportDto { C = c, R = r };
+                        
+                        if (type == "v") // cell:A1:v:10
+                        {
+                            cellDto.T = "n";
+                            if (double.TryParse(parts[3], out double val)) cellDto.V = val;
+                        }
+                        else if (type == "t") // cell:A1:t:Hello
+                        {
+                            cellDto.T = "s";
+                            cellDto.V = UnescapeString(string.Join(":", parts.Skip(3)));
+                        }
+                        else if (type == "vtf") // cell:A1:vtf:n:10:SUM(A1)
+                        {
+                            string fType = parts[3]; // n or t
+                            cellDto.T = (fType == "n") ? "n" : "s";
+                            
+                            string valStr = parts[4];
+                            if (fType == "n" && double.TryParse(valStr, out double val)) cellDto.V = val;
+                            else cellDto.V = UnescapeString(valStr);
+
+                            if (parts.Length > 5)
+                            {
+                                cellDto.F = UnescapeString(string.Join(":", parts.Skip(5)));
+                            }
+                        }
+
+                        sheet.Cells.Add(cellDto);
+                    }
+                    
+                    // Look for merges (rowspan / colspan)
+                    // Format: cell:A1:rowspan:2 or cell:A1:rowspan:2:colspan:2
+                    int rowSpan = 1;
+                    int colSpan = 1;
+                    
+                    for (int i = 2; i < parts.Length - 1; i++)
+                    {
+                        if (parts[i] == "rowspan" && int.TryParse(parts[i+1], out int rs)) rowSpan = rs;
+                        if (parts[i] == "colspan" && int.TryParse(parts[i+1], out int cs)) colSpan = cs;
+                    }
+
+                    if (rowSpan > 1 || colSpan > 1)
+                    {
+                        sheet.Merges.Add(new MergeImportDto
+                        {
+                            S = new MergePointDto { R = r, C = c },
+                            E = new MergePointDto { R = r + rowSpan - 1, C = c + colSpan - 1 }
+                        });
+                    }
+                }
+                else if (parts[0] == "col" && parts.Length >= 4 && parts[2] == "w") // col:A:w:120
+                {
+                    (int c, _) = DecodeCoord(parts[1] + "1");
+                    if (double.TryParse(parts[3], out double w))
+                    {
+                        sheet.Cols.Add(new ColRowImportDto { Index = c, Size = w });
+                    }
+                }
+            }
+
+            return sheet;
+        }
+
+        private (int, int) DecodeCoord(string coord)
+        {
+            int col = 0;
+            int row = 0;
+            
+            foreach (char c in coord)
+            {
+                if (char.IsLetter(c))
+                {
+                    col = (col * 26) + (char.ToUpper(c) - 'A' + 1);
+                }
+                else if (char.IsDigit(c))
+                {
+                    row = (row * 10) + (c - '0');
+                }
+            }
+            
+            return (col - 1, row - 1); // 0-indexed
+        }
+
+        private string UnescapeString(string s)
+        {
+            if (string.IsNullOrEmpty(s)) return "";
+            return s.Replace("\\c", ":").Replace("\\n", "\n").Replace("\\b", "\\");
+        }
+
         private string MapToSocialCalcJson(SpreadsheetImportDto dto)
         {
             var sheetArr = new Dictionary<string, object>();

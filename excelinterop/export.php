@@ -90,20 +90,36 @@ $workbook->setActiveSheetIndex($actualactiveindex);
 
 // Write the workbook into a file
 if (strtolower($outfiletype) === 'pdf') {
-    $class = \PhpOffice\PhpSpreadsheet\Writer\Pdf\Mpdf::class;
-    \PhpOffice\PhpSpreadsheet\IOFactory::registerWriter('Pdf', $class);
+    // Generate HTML from the spreadsheet
+    $htmlWriter = \PhpOffice\PhpSpreadsheet\IOFactory::createWriter($workbook, 'Html');
+    // Ensure all sheets are exported if needed, or just the active one
+    $htmlWriter->writeAllSheets();
     
-    foreach ($workbook->getAllSheets() as $ws) {
-        $ws->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
-        $ws->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
-        $ws->getPageSetup()->setFitToPage(true);
-        $ws->getPageSetup()->setFitToWidth(1);
-        $ws->getPageSetup()->setFitToHeight(0);
-    }
+    // Write HTML to a temporary variable (by catching the output or writing to memory)
+    ob_start();
+    $htmlWriter->save('php://output');
+    $html = ob_get_clean();
+    
+    // Inject CSS to force tables to take 100% width
+    $html = str_replace('<style type="text/css">', "<style type=\"text/css\">\ntable { width: 100% !important; max-width: 100% !important; }\ntd { word-wrap: break-word; }\n", $html);
+    
+    // Initialize Mpdf with Landscape A4 and minimal margins
+    $mpdf = new \Mpdf\Mpdf([
+        'mode' => 'utf-8',
+        'format' => 'A4-L',
+        'margin_left' => 10,
+        'margin_right' => 10,
+        'margin_top' => 10,
+        'margin_bottom' => 10
+    ]);
+    
+    // Write HTML to PDF and save
+    $mpdf->WriteHTML($html);
+    $mpdf->Output($outfile, \Mpdf\Output\Destination::FILE);
+} else {
+    $objWriter = IOFactory::createWriter($workbook, $outfiletype);
+    $objWriter->save($outfile);
 }
-
-$objWriter = IOFactory::createWriter($workbook, $outfiletype);
-$objWriter->save($outfile);
 
 
 } catch (Throwable $e) {

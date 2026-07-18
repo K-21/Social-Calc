@@ -89,8 +89,22 @@ foreach ($sheetarr as $key => $value) {
 $workbook->setActiveSheetIndex($actualactiveindex);
 
 // Write the workbook into a file
+if (strtolower($outfiletype) === 'pdf') {
+    $class = \PhpOffice\PhpSpreadsheet\Writer\Pdf\Mpdf::class;
+    \PhpOffice\PhpSpreadsheet\IOFactory::registerWriter('Pdf', $class);
+    
+    foreach ($workbook->getAllSheets() as $ws) {
+        $ws->getPageSetup()->setOrientation(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::ORIENTATION_LANDSCAPE);
+        $ws->getPageSetup()->setPaperSize(\PhpOffice\PhpSpreadsheet\Worksheet\PageSetup::PAPERSIZE_A4);
+        $ws->getPageSetup()->setFitToPage(true);
+        $ws->getPageSetup()->setFitToWidth(1);
+        $ws->getPageSetup()->setFitToHeight(0);
+    }
+}
+
 $objWriter = IOFactory::createWriter($workbook, $outfiletype);
 $objWriter->save($outfile);
+
 
 } catch (Throwable $e) {
     error_log("Export error: " . $e->getMessage());

@@ -59,6 +59,9 @@
                                         <i class="fab fa-google-drive text-success"></i> Save to Google Drive
                                     </a></li>
                                     <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'pdf')">
+                                        <i class="fas fa-file-pdf text-danger"></i> PDF Document (.pdf)
+                                    </a></li>
                                     <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'xlsx')">
                                         <i class="fas fa-file-excel"></i> Excel (.xlsx)
                                     </a></li>
@@ -170,6 +173,8 @@
         function exportSheet(sheetId, format) {
             if (format === 'gdrive') {
                 window.location.href = `/sheets/export-gdrive/${sheetId}`;
+            } else if (format === 'pdf') {
+                window.location.href = `/Sheets/Export-Pdf/${sheetId}`;
             } else if (format) {
                 window.location.href = `/Sheets/Export-Format/${sheetId}/${format}`;
             } else {

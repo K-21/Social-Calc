@@ -11,8 +11,7 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<int>, i
     {
     }
 
-    public DbSet<Sheet> Sheets { get; set; }
-    public DbSet<PasswordResetToken> PasswordResetTokens { get; set; }
+    public DbSet<Sheet> Sheets { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,26 +24,15 @@ public class ApplicationDbContext : IdentityDbContext<User, IdentityRole<int>, i
                 .WithOne(s => s.User)
                 .HasForeignKey(s => s.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
-
-            entity.HasMany(u => u.ResetTokens)
-                .WithOne(t => t.User)
-                .HasForeignKey(t => t.UserId)
-                .OnDelete(DeleteBehavior.Cascade);
         });
 
         // Sheet Configuration
         modelBuilder.Entity<Sheet>(entity =>
         {
-            entity.HasIndex(s => new { s.UserId, s.UpdatedAt });
+            entity.HasQueryFilter(s => !s.IsDeleted);
+            entity.HasIndex(s => new { s.UserId, s.IsDeleted, s.UpdatedAt });
             entity.HasIndex(s => s.CreatedAt);
             entity.Property(s => s.Data); // Allow large JSON data
-        });
-
-        // PasswordResetToken Configuration
-        modelBuilder.Entity<PasswordResetToken>(entity =>
-        {
-            entity.HasIndex(t => t.Token).IsUnique();
-            entity.HasIndex(t => t.ExpiresAt);
         });
     }
 }

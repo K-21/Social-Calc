@@ -1,4 +1,4 @@
-﻿using SocialCalc.Web.Models;
+using SocialCalc.Web.Models;
 
 namespace SocialCalc.Web.Services;
 
@@ -8,11 +8,12 @@ namespace SocialCalc.Web.Services;
 public interface IAuthService
 {
     Task<User?> AuthenticateUserAsync(string email, string password);
-    Task<bool> RegisterUserAsync(string email, string password);
+    Task<(User? User, IEnumerable<string> Errors)> RegisterUserAsync(string email, string password);
     Task<bool> ValidateUserAsync(User user);
     Task<string> GeneratePasswordResetTokenAsync(User user);
-    Task<bool> ResetPasswordAsync(string token, string newPassword);
+    Task<(bool Success, IEnumerable<string> Errors)> ResetPasswordAsync(string email, string token, string newPassword);
     Task UpdateLastLoginAsync(User user);
+    Task<User?> FindUserByEmailAsync(string email);
 }
 
 
@@ -23,23 +24,21 @@ public interface ISheetService
 {
     Task<Sheet?> SaveSheetAsync(int userId, string fileName, string data);
     Task<bool> UpdateSheetAsync(Sheet sheet);
-    Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 50);
+    Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 10);
     Task<int> GetTotalUserSheetsAsync(int userId);
     Task<Sheet?> GetSheetAsync(int sheetId, int userId);
-    Task<Sheet?> GetSheetByIdAsync(int sheetId, int userId);
+
     Task<bool> DeleteSheetAsync(int sheetId, int userId);
 }
 
 /// <summary>
-/// Excel service interface - handles PHP Excel integration
+/// Spreadsheet service interface - handles parsing and exporting
 /// </summary>
-public interface IExcelService
+public interface ISpreadsheetService
 {
-    Task<Stream?> ExportToExcelAsync(Sheet sheet);
-    Task<Stream?> ExportToCsvAsync(Sheet sheet);
-    Task<Stream?> ExportToFormatAsync(Sheet sheet, string format); // format: "Csv", "Html", "Ods", "Xlsx"
-    Task<Sheet?> ImportFromExcelAsync(Stream fileStream, int userId, string fileName);
-    Task<bool> IsValidExcelFileAsync(Stream fileStream);
+    Task<bool> IsValidExcelFileAsync(Stream fileStream, string fileName);
+    Task<SpreadsheetData> ImportAsync(Stream file, string format);
+    Task<byte[]> ExportAsync(SpreadsheetData data, string format);
 }
 
 /// <summary>

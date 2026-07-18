@@ -19,7 +19,7 @@ public class HomeController : Controller
     public IActionResult Index()
     {
         // Redirect to login if not authenticated
-        if (!User.Identity?.IsAuthenticated ?? true)
+        if (User.Identity?.IsAuthenticated != true)
         {
             return RedirectToAction("Login", "Auth");
         }

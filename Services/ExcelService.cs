@@ -1,34 +1,22 @@
-﻿using SocialCalc.Web.Models;
+using SocialCalc.Web.Models;
 
 namespace SocialCalc.Web.Services;
 
-public class ExcelService : IExcelService
+public class ExcelService : SpreadsheetServiceBase
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
-    private readonly ILogger<ExcelService> _logger;
 
     public ExcelService(
         IHttpClientFactory httpClientFactory,
         IConfiguration configuration,
-        ILogger<ExcelService> logger)
+        ILogger<ExcelService> logger) : base(logger)
     {
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
-        _logger = logger;
     }
 
-    public async Task<Stream?> ExportToExcelAsync(Sheet sheet)
-    {
-        return await ExportToFormatAsync(sheet, "Xlsx");
-    }
-
-    public async Task<Stream?> ExportToCsvAsync(Sheet sheet)
-    {
-        return await ExportToFormatAsync(sheet, "Csv");
-    }
-
-    public async Task<Stream?> ExportToFormatAsync(Sheet sheet, string format)
+    public override async Task<byte[]> ExportAsync(SpreadsheetData data, string format)
     {
         try
         {
@@ -38,105 +26,71 @@ public class ExcelService : IExcelService
             if (string.IsNullOrEmpty(phpServiceUrl))
             {
                 _logger.LogError("PHP service URL not configured");
-                return null;
+                return Array.Empty<byte>();
             }
 
-            var exportUrl = $"{phpServiceUrl}export.php?format={format.ToLower()}";
-            var content = new StringContent(sheet.Data, System.Text.Encoding.UTF8, "application/json");
+            var exportUrl = $"{phpServiceUrl}export.php?format={Uri.EscapeDataString(format.ToLower())}";
+            var content = new StringContent(data.JsonData ?? "{}", System.Text.Encoding.UTF8, "application/json");
 
             var response = await client.PostAsync(exportUrl, content);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError($"PHP export to {format} failed: {response.StatusCode}");
-                return null;
+                _logger.LogError("PHP export to {Format} failed: {StatusCode}", format, response.StatusCode);
+                return Array.Empty<byte>();
             }
 
-            var stream = await response.Content.ReadAsStreamAsync();
-            _logger.LogInformation($"Sheet exported to {format}: {sheet.FileName}");
-            return stream;
+            var bytes = await response.Content.ReadAsByteArrayAsync();
+            _logger.LogInformation("Sheet exported to {Format}: {FileName}", format, data.FileName);
+            return bytes;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting to {format}: {ex.Message}");
-            return null;
+            _logger.LogError(ex, "Error exporting to {Format}", format);
+            return Array.Empty<byte>();
         }
     }
 
-    public async Task<Sheet?> ImportFromExcelAsync(Stream fileStream, int userId, string fileName)
+    public override async Task<SpreadsheetData> ImportAsync(Stream fileStream, string format)
     {
         try
         {
-            if (!await IsValidExcelFileAsync(fileStream))
-            {
-                _logger.LogWarning($"Invalid Excel file: {fileName}");
-                return null;
-            }
-
             var client = _httpClientFactory.CreateClient();
             var phpServiceUrl = _configuration["AppSettings:PhpServiceUrl"];
 
             if (string.IsNullOrEmpty(phpServiceUrl))
             {
                 _logger.LogError("PHP service URL not configured");
-                return null;
+                return new SpreadsheetData();
             }
 
             var importUrl = $"{phpServiceUrl}import.php";
             
             var content = new MultipartFormDataContent();
-            content.Add(new StreamContent(fileStream), "file", fileName);
-            content.Add(new StringContent(userId.ToString()), "userId");
+            var formatExt = string.IsNullOrEmpty(format) ? ".xlsx" : (format.StartsWith(".") ? format : "." + format);
+            content.Add(new StreamContent(fileStream), "file", "import" + formatExt);
 
             var response = await client.PostAsync(importUrl, content);
             if (!response.IsSuccessStatusCode)
             {
-                _logger.LogError($"PHP import failed: {response.StatusCode}");
-                return null;
+                _logger.LogError("PHP import failed: {StatusCode}", response.StatusCode);
+                return new SpreadsheetData();
             }
 
             var jsonData = await response.Content.ReadAsStringAsync();
             
-            var sheet = new Sheet
+            var data = new SpreadsheetData
             {
-                UserId = userId,
-                FileName = fileName,
-                Data = jsonData,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                FileName = "Imported",
+                JsonData = jsonData
             };
 
-            _logger.LogInformation($"Sheet imported from Excel: {fileName}");
-            return sheet;
+            return data;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error importing from Excel: {ex.Message}");
-            return null;
+            _logger.LogError(ex, "Error importing from Excel");
+            return new SpreadsheetData();
         }
     }
 
-    public async Task<bool> IsValidExcelFileAsync(Stream fileStream)
-    {
-        try
-        {
-            fileStream.Seek(0, SeekOrigin.Begin);
-            var buffer = new byte[4];
-            await fileStream.ReadAsync(buffer, 0, 4);
-
-            // Check for Excel file signatures
-            // .xlsx files start with PK (0x50 0x4B)
-            // .xls files start with D0 CF (0xD0 0xCF)
-            var isXlsx = buffer[0] == 0x50 && buffer[1] == 0x4B;
-            var isXls = buffer[0] == 0xD0 && buffer[1] == 0xCF;
-
-            fileStream.Seek(0, SeekOrigin.Begin);
-            return isXlsx || isXls;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error validating Excel file: {ex.Message}");
-            return false;
-        }
-    }
 }
-

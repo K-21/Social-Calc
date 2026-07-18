@@ -83,6 +83,9 @@
                                     <li><a class="dropdown-item text-primary" href="#" onclick="exportSheetApi(@sheet.Id, 'tsv')">
                                         <i class="fas fa-bolt"></i> TSV via API (.tsv)
                                     </a></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="exportPdfApi(@sheet.Id, '@sheet.FileName')">
+                                        <i class="fas fa-file-pdf"></i> PDF via API (.pdf)
+                                    </a></li>
                                 </ul>
                             </div>
                             <button class="btn btn-sm btn-danger" onclick="deleteSheet(@sheet.Id)">
@@ -128,7 +131,6 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <div class="modal-header">
-                <script src="~/js/xlsx.full.min.js"></script>
                 <h5 class="modal-title"><i class="fas fa-file-import"></i> Import Spreadsheet</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
@@ -152,10 +154,11 @@
 </div>
 
 @section Scripts {
+    <script src="~/js/xlsx.full.min.js"></script>
     <script>
         function createNewSheet() {
             const sheetName = prompt("Enter sheet name:");
-            if (!sheetName) return;
+            if (!sheetName || !sheetName.trim()) return;
 
             fetch('/Sheets/Create', {
                 method: 'POST',
@@ -186,14 +189,19 @@
             } else if (format) {
                 window.location.href = `/Sheets/Export-Format/${sheetId}/${format}`;
             } else {
-                window.location.href = `/Sheets/Export/${sheetId}`;
+                window.location.href = `/Sheets/Download/${sheetId}`;
             }
         }
 
         async function exportSheetApi(sheetId, format) {
             try {
                 // Show a simple loading indicator in the button if possible, or just alert
-                const response = await fetch(`/api/spreadsheet/export/${sheetId}`);
+                const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                const response = await fetch(`/api/spreadsheet/export/${sheetId}`, {
+                    headers: {
+                        'RequestVerificationToken': token
+                    }
+                });
                 if (!response.ok) throw new Error("Failed to fetch export data");
                 const data = await response.json();
                 
@@ -258,6 +266,83 @@
             }
         }
 
+        async function exportPdfApi(sheetId, fileName) {
+            try {
+                const payload = {
+                    spreadsheetId: sheetId,
+                    printSettings: {
+                        watermarkText: "CONFIDENTIAL",
+                        landscape: true
+                    }
+                };
+                
+                // Show a simple loading indicator (using the sheet name as status)
+                const nameSpan = document.getElementById(`sheetName-${sheetId}`);
+                const originalName = nameSpan.innerText;
+                nameSpan.innerHTML = `${originalName} <span class="spinner-border spinner-border-sm text-primary" role="status" aria-hidden="true"></span>`;
+                
+                const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                const response = await fetch('/api/export/pdf', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.status === 202) {
+                    const data = await response.json();
+                    pollPdfStatusDashboard(data.jobId, sheetId, fileName, originalName);
+                } else if (response.ok) {
+                    const blob = await response.blob();
+                    downloadBlob(blob, fileName);
+                    nameSpan.innerText = originalName;
+                } else {
+                    const err = await response.text();
+                    alert("Error exporting PDF.");
+                    console.error(err);
+                    nameSpan.innerText = originalName;
+                }
+            } catch(e) {
+                alert("Error: " + e.message);
+                document.getElementById(`sheetName-${sheetId}`).innerText = fileName;
+            }
+        }
+
+        function downloadBlob(blob, fileName) {
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            const safeName = fileName.replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || "export";
+            a.download = safeName + ".pdf";
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        }
+
+        async function pollPdfStatusDashboard(jobId, sheetId, fileName, originalName) {
+            try {
+                const res = await fetch(`/api/export/pdf/status/${jobId}`);
+                if (!res.ok) throw new Error("Status check failed");
+                const data = await res.json();
+                
+                if (data.status === 'Completed') {
+                    window.location.href = `/api/export/pdf/download/${jobId}`;
+                    document.getElementById(`sheetName-${sheetId}`).innerText = originalName;
+                } else if (data.status === 'Failed') {
+                    alert("PDF Generation Failed: " + data.error);
+                    document.getElementById(`sheetName-${sheetId}`).innerText = originalName;
+                } else {
+                    setTimeout(() => pollPdfStatusDashboard(jobId, sheetId, fileName, originalName), 2000);
+                }
+            } catch(e) {
+                alert("Error checking PDF status: " + e.message);
+                document.getElementById(`sheetName-${sheetId}`).innerText = originalName;
+            }
+        }
+
 
         // Safe rename sheet listener using data attributes to prevent Stored XSS
         document.addEventListener('DOMContentLoaded', function() {
@@ -282,7 +367,7 @@
                                 document.getElementById(`sheetName-${sheetId}`).innerText = data.fileName;
                                 this.setAttribute('data-filename', data.fileName);
                             } else {
-                                alert('Error renaming sheet: ' + (data.message || 'Unknown error'));
+                                alert('Error renaming sheet. Please try again with a valid name.');
                             }
                         })
                         .catch(err => {
@@ -441,12 +526,5 @@
             reader.readAsArrayBuffer(file);
         }
 
-        // Check if we just saved a sheet and auto-refresh if needed
-        document.addEventListener('DOMContentLoaded', function() {
-            if (localStorage.getItem('justSavedSheet') === 'true') {
-                localStorage.removeItem('justSavedSheet');
-                window.location.reload();
-            }
-        });
     </script>
 }

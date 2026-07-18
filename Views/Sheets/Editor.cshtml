@@ -100,7 +100,7 @@
     <textarea name="savestr" id="sheetdata" style="display:none;">
 @if (Model != null && !string.IsNullOrEmpty(Model.Data))
 {
-    @Model.Data
+    @Html.Raw(System.Net.WebUtility.HtmlEncode(Model.Data))
 }
     </textarea>
 
@@ -202,8 +202,7 @@
                           //  console.log('Sheet data is empty, starting with blank sheet');
                         }
                     } catch (e) {
-                       // console.error('Error loading sheet data:', e);
-                       // console.error(e.stack);
+                       alert("Failed to load spreadsheet data. The file might be corrupt.");
                     }
                     
                     // Trigger resize to ensure proper layout
@@ -221,6 +220,11 @@
         document.getElementById('btnSave').addEventListener('click', function() {
             if (!spreadsheet) {
                 alert('Spreadsheet not initialized');
+                return;
+            }
+            
+            if (sheetId === 0) {
+                alert('Cannot save: Sheet ID is invalid. Please reload the page.');
                 return;
             }
             
@@ -264,7 +268,6 @@
             });
         });
 
-        // Undo / Redo
         document.getElementById('btnUndo').addEventListener('click', function(e) {
             e.preventDefault();
             if (spreadsheet) spreadsheet.ExecuteCommand('undo', '');
@@ -274,11 +277,97 @@
             if (spreadsheet) spreadsheet.ExecuteCommand('redo', '');
         });
 
+        // Formatting
+        document.getElementById('btnBold').addEventListener('click', function(e) {
+            e.preventDefault();
+            if (spreadsheet) spreadsheet.ExecuteCommand('format %C text-weight bold', '');
+        });
+        document.getElementById('btnItalic').addEventListener('click', function(e) {
+            e.preventDefault();
+            if (spreadsheet) spreadsheet.ExecuteCommand('format %C text-style italic', '');
+        });
+        document.getElementById('btnUnderline').addEventListener('click', function(e) {
+            e.preventDefault();
+            if (spreadsheet) spreadsheet.ExecuteCommand('format %C text-decoration underline', '');
+        });
+
 
         // Export PDF
-        document.getElementById('btnExportPDF').addEventListener('click', function() {
-            window.location.href = `/Sheets/Export-Pdf/@(Model?.Id ?? 0)`;
+        document.getElementById('btnExportPDF').addEventListener('click', async function() {
+            try {
+                const payload = {
+                    spreadsheetId: @(Model?.Id ?? 0),
+                    printSettings: {
+                        watermarkText: "CONFIDENTIAL",
+                        landscape: true
+                    }
+                };
+                
+                showSavingIndicator(true);
+                document.getElementById('saveStatusText').textContent = 'Generating PDF...';
+                
+                const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                const response = await fetch('/api/export/pdf', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'RequestVerificationToken': token
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                if (response.status === 202) {
+                    // Background job queued
+                    const data = await response.json();
+                    pollPdfStatus(data.jobId);
+                } else if (response.ok) {
+                    // Synchronous return
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    // Safely get filename and remove problematic characters
+                    const safeName = "@(Model?.FileName ?? "export")".replace(/[^a-zA-Z0-9_\- ]/g, "").trim() || "export";
+                    a.download = safeName + ".pdf";
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showSavedIndicator();
+                } else {
+                    const err = await response.text();
+                    alert("Error exporting PDF.");
+                    console.error(err);
+                    showSavingIndicator(false);
+                }
+            } catch(e) {
+                alert("Error: " + e.message);
+                showSavingIndicator(false);
+            }
         });
+
+        async function pollPdfStatus(jobId) {
+            try {
+                const res = await fetch(`/api/export/pdf/status/${jobId}`);
+                if (!res.ok) throw new Error("Status check failed");
+                const data = await res.json();
+                
+                if (data.status === 'Completed') {
+                    window.location.href = `/api/export/pdf/download/${jobId}`;
+                    showSavedIndicator();
+                } else if (data.status === 'Failed') {
+                    alert("PDF Generation Failed: " + data.error);
+                    showSavingIndicator(false);
+                } else {
+                    // Pending or Processing
+                    document.getElementById('saveStatusText').textContent = `PDF ${data.status}...`;
+                    setTimeout(() => pollPdfStatus(jobId), 2000);
+                }
+            } catch(e) {
+                alert("Error checking PDF status: " + e.message);
+                showSavingIndicator(false);
+            }
+        }
 
         // Export Google Drive
         document.getElementById('btnExportGoogleDrive').addEventListener('click', function() {
@@ -455,12 +544,10 @@
         function showSaveSuccessToast() {
             const toastEl = document.getElementById('saveSuccessToast');
             const toast = new bootstrap.Toast(toastEl, {
-                autohide: false // Keep it visible until user dismisses or clicks the button
+                autohide: true,
+                delay: 3000
             });
             toast.show();
-            
-            // Set a flag that we just saved, so the sheets page can refresh automatically
-            localStorage.setItem('justSavedSheet', 'true');
         }
 
         // ----- Autosave Implementation -----
@@ -540,8 +627,6 @@
                     lastSavedSnapshot = snapshot;
                     unsavedChanges = false;
                     showSavedIndicator();
-                    // keep existing behavior
-                    localStorage.setItem('justSavedSheet', 'true');
                 } else {
                     showSaveError(json?.message || 'Unknown error');
                 }
@@ -564,7 +649,7 @@
             }
 
             // Also bind global keyboard input (in case)
-            document.addEventListener('keyup', scheduleAutosave);
+            // (Removed global keyup listener to prevent autosave spam on non-editing keys)
 
             // Initialize lastSavedSnapshot from loaded document if available
             try {

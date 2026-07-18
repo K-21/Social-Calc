@@ -1,11 +1,9 @@
-using Microsoft.AspNetCore.Authentication;
-using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
-using System.Security.Claims;
 using Microsoft.AspNetCore.RateLimiting;
+using System.ComponentModel.DataAnnotations;
 
 namespace SocialCalc.Web.Controllers;
 
@@ -14,41 +12,34 @@ public class AuthController : Controller
     private readonly IAuthService _authService;
     private readonly IEmailService _emailService;
     private readonly SignInManager<User> _signInManager;
-    private readonly UserManager<User> _userManager;
     private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         IAuthService authService,
         IEmailService emailService,
         SignInManager<User> signInManager,
-        UserManager<User> userManager,
         ILogger<AuthController> logger)
     {
         _authService = authService;
         _emailService = emailService;
         _signInManager = signInManager;
-        _userManager = userManager;
         _logger = logger;
     }
 
+    private static bool IsValidEmail(string email)
+    {
+        if (string.IsNullOrWhiteSpace(email)) return false;
+        return new EmailAddressAttribute().IsValid(email);
+    }
+
     [HttpGet("/login")]
-    public async Task<IActionResult> Login()
+    public IActionResult Login()
     {
         // Check if user is properly authenticated and has a valid user account
         if (User.Identity?.IsAuthenticated == true)
         {
-            var user = await _userManager.GetUserAsync(User);
-            if (user != null && user.IsActive)
-            {
-                _logger.LogInformation($"User {user.Id} already authenticated, redirecting to sheets");
-                return RedirectToAction("Index", "Sheets");
-            }
-            else
-            {
-                // User is "authenticated" but user record doesn't exist or is inactive - sign out
-                _logger.LogWarning("Invalid user session detected, signing out");
-                await _signInManager.SignOutAsync();
-            }
+            _logger.LogInformation("User already authenticated, redirecting to sheets");
+            return RedirectToAction("Index", "Sheets");
         }
         
         return View();
@@ -61,6 +52,12 @@ public class AuthController : Controller
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(password))
+            {
+                ModelState.AddModelError("", "Email and password are required");
+                return View();
+            }
+
             var user = await _authService.AuthenticateUserAsync(email, password);
             if (user == null)
             {
@@ -71,12 +68,12 @@ public class AuthController : Controller
             await _signInManager.SignInAsync(user, isPersistent: true);
             await _authService.UpdateLastLoginAsync(user);
 
-            _logger.LogInformation($"User logged in: {user.Id}");
+            _logger.LogInformation("User logged in: {UserId}", user.Id);
             return Redirect("/sheets");
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Login error: {ex.Message}");
+            _logger.LogError(ex, "Login error");
             ModelState.AddModelError("", "An error occurred during login");
             return View();
         }
@@ -100,9 +97,9 @@ public class AuthController : Controller
         try
         {
             // Validate input
-            if (string.IsNullOrWhiteSpace(email))
+            if (!IsValidEmail(email))
             {
-                ModelState.AddModelError("email", "Email is required");
+                ModelState.AddModelError("email", "A valid email is required");
                 return View();
             }
 
@@ -118,35 +115,27 @@ public class AuthController : Controller
                 return View();
             }
 
-            if (password.Length < 8)
+            var result = await _authService.RegisterUserAsync(email, password);
+            if (result.User == null)
             {
-                ModelState.AddModelError("password", "Password must be at least 8 characters long");
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError("", error);
+                }
                 return View();
             }
 
-            var success = await _authService.RegisterUserAsync(email, password);
-            if (!success)
-            {
-                ModelState.AddModelError("", "Registration failed. This email may already be in use or password doesn't meet requirements (needs uppercase and number).");
-                return View();
-            }
+            // Send welcome email as fire-and-forget
+            var userName = email.Contains('@') ? email.Split('@')[0] : email;
+            _ = _emailService.SendWelcomeEmailAsync(email, userName);
 
-            var user = await _userManager.FindByEmailAsync(email);
-            if (user != null)
-            {
-                await _emailService.SendWelcomeEmailAsync(email, email);
-                // Note: In production, implement email confirmation
-                user.EmailConfirmed = true;
-                await _userManager.UpdateAsync(user);
-            }
-
-            _logger.LogInformation($"New user registered: {user?.Id}");
+            _logger.LogInformation("New user registered: {UserId}", result.User.Id);
             TempData["SuccessMessage"] = "Registration successful! Please log in.";
             return RedirectToAction("Login");
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Registration error: {ex.Message}");
+            _logger.LogError(ex, "Registration error");
             ModelState.AddModelError("", "An error occurred during registration");
             return View();
         }
@@ -158,7 +147,7 @@ public class AuthController : Controller
     public async Task<IActionResult> Logout()
     {
         await _signInManager.SignOutAsync();
-        _logger.LogInformation($"User logged out");
+        _logger.LogInformation("User logged out");
         return RedirectToAction("Login");
     }
 
@@ -175,7 +164,13 @@ public class AuthController : Controller
     {
         try
         {
-            var user = await _userManager.FindByEmailAsync(email);
+            if (!IsValidEmail(email))
+            {
+                ModelState.AddModelError("", "Please enter a valid email address");
+                return View();
+            }
+
+            var user = await _authService.FindUserByEmailAsync(email);
             if (user == null)
             {
                 // Don't reveal if user exists (security best practice)
@@ -194,7 +189,7 @@ public class AuthController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Forgot password error: {ex.Message}");
+            _logger.LogError(ex, "Forgot password error");
             ModelState.AddModelError("", "An error occurred");
             return View();
         }
@@ -217,16 +212,37 @@ public class AuthController : Controller
     {
         try
         {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                ModelState.AddModelError("", "Invalid or missing reset token.");
+                return View();
+            }
+            
+            if (!IsValidEmail(email))
+            {
+                ModelState.AddModelError("", "Please enter a valid email address");
+                return View();
+            }
+
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                ModelState.AddModelError("", "Password is required.");
+                return View();
+            }
+
             if (password != confirmPassword)
             {
                 ModelState.AddModelError("", "Passwords do not match");
                 return View();
             }
 
-            var success = await _authService.ResetPasswordAsync(token, password);
-            if (!success)
+            var result = await _authService.ResetPasswordAsync(email, token, password);
+            if (!result.Success)
             {
-                ModelState.AddModelError("", "Password reset failed. Token may be expired.");
+                foreach (var error in result.Errors)
+                {
+                    ModelState.AddModelError("", error);
+                }
                 return View();
             }
 
@@ -235,7 +251,7 @@ public class AuthController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Reset password error: {ex.Message}");
+            _logger.LogError(ex, "Reset password error");
             ModelState.AddModelError("", "An error occurred");
             return View();
         }

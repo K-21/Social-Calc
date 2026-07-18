@@ -7,7 +7,7 @@ public class User : IdentityUser<int>
 {
     [Required]
     [EmailAddress]
-    public override string Email { get; set; } = null!;
+    public override string? Email { get; set; }
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -17,7 +17,6 @@ public class User : IdentityUser<int>
 
     // Navigation
     public virtual ICollection<Sheet> Sheets { get; set; } = new List<Sheet>();
-    public virtual ICollection<PasswordResetToken> ResetTokens { get; set; } = new List<PasswordResetToken>();
 }
 
 public class Sheet
@@ -33,8 +32,7 @@ public class Sheet
     public string FileName { get; set; } = null!;
 
     [Required]
-    [MaxLength(5242880)]
-    public string Data { get; set; } = "{}"; // JSON format
+    public string Data { get; set; } = "{}"; // JSON format, unbounded text; size enforced at app layer
 
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 
@@ -46,24 +44,3 @@ public class Sheet
     public virtual User User { get; set; } = null!;
 }
 
-public class PasswordResetToken
-{
-    [Key]
-    public int Id { get; set; }
-
-    [Required]
-    public int UserId { get; set; }
-
-    [Required]
-    [StringLength(500)]
-    public string Token { get; set; } = null!;
-
-    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
-
-    public DateTime ExpiresAt { get; set; }
-
-    public bool IsUsed { get; set; } = false;
-
-    // Navigation
-    public virtual User User { get; set; } = null!;
-}

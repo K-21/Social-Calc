@@ -39,13 +39,10 @@ if (php_sapi_name() === 'cli') {
         }
         $inputFile = $targetPath;
         $isTempFile = true;
-    } elseif (isset($_POST['path'])) {
-        // Allow posting an existing server path
-        $inputFile = $_POST['path'];
     } else {
         http_response_code(400);
         header('Content-Type: application/json');
-        echo json_encode(['error' => 'No input file provided. Use multipart form field "file" or "upload" or POST "path".']);
+        echo json_encode(['error' => 'No input file provided. Use multipart form field "file" or "upload".']);
         exit;
     }
 }
@@ -98,9 +95,14 @@ try {
     }
 
     if (php_sapi_name() === 'cli') {
-        // Preserve original CLI output format
-        echo "$---$";
-        echo $json;
+        $outputFile = isset($argv[2]) ? $argv[2] : null;
+        if (!empty($outputFile)) {
+            file_put_contents($outputFile, $json);
+        } else {
+            // Preserve original CLI output format
+            echo "$---$";
+            echo $json;
+        }
     } else {
         header('Content-Type: application/json');
         echo $json;

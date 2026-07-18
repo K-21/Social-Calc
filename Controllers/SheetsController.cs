@@ -1,15 +1,16 @@
+using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
 using SocialCalc.Web.Models;
 using SocialCalc.Web.Services;
 using System.Text.Json;
-using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Identity;
 using Google.Apis.Auth.OAuth2;
 using Google.Apis.Drive.v3;
 using Google.Apis.Services;
 using GoogleFile = Google.Apis.Drive.v3.Data.File;
+
 namespace SocialCalc.Web.Controllers;
 
 [Authorize]
@@ -17,23 +18,30 @@ namespace SocialCalc.Web.Controllers;
 public class SheetsController : Controller
 {
     private readonly ISheetService _sheetService;
-    private readonly IExcelService _excelService;
-    private readonly UserManager<User> _userManager;
+    private readonly ISpreadsheetService _spreadsheetService;
     private readonly ILogger<SheetsController> _logger;
+    private readonly IAuthenticationSchemeProvider _schemeProvider;
     private readonly IConfiguration _configuration;
 
     public SheetsController(
         ISheetService sheetService,
-        IExcelService excelService,
-        UserManager<User> userManager,
+        ISpreadsheetService spreadsheetService,
         ILogger<SheetsController> logger,
+        IAuthenticationSchemeProvider schemeProvider,
         IConfiguration configuration)
     {
         _sheetService = sheetService;
-        _excelService = excelService;
-        _userManager = userManager;
+        _spreadsheetService = spreadsheetService;
         _logger = logger;
+        _schemeProvider = schemeProvider;
         _configuration = configuration;
+    }
+
+    private bool TryGetCurrentUserId(out int userId)
+    {
+        userId = 0;
+        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return !string.IsNullOrEmpty(userIdStr) && int.TryParse(userIdStr, out userId);
     }
 
     [HttpGet("")]
@@ -42,8 +50,7 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return RedirectToAction("Login", "Auth");
             }
@@ -59,7 +66,7 @@ public class SheetsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error retrieving sheets: {ex.Message}");
+            _logger.LogError(ex, "Error retrieving sheets");
             return View(new List<Sheet>());
         }
     }
@@ -71,8 +78,7 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return RedirectToAction("Login", "Auth");
             }
@@ -87,7 +93,7 @@ public class SheetsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error loading sheet editor: {ex.Message}");
+            _logger.LogError(ex, "Error loading sheet editor");
             return NotFound();
         }
     }
@@ -98,8 +104,12 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (request == null || request.Data == null)
+            {
+                return BadRequest(new { success = false, message = "Invalid request data" });
+            }
+
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
@@ -111,7 +121,7 @@ public class SheetsController : Controller
             }
 
             // Log what we received
-            _logger.LogInformation($"Save request received. Data length: {request.Data?.Length ?? 0}");
+            _logger.LogInformation("Save request received. Data length: {DataLength}", request.Data?.Length ?? 0);
 
             // Data is already a string from JavaScript, no need to serialize again
             sheet.Data = request.Data ?? "";
@@ -122,7 +132,7 @@ public class SheetsController : Controller
             
             if (success)
             {
-                _logger.LogInformation($"Sheet {id} saved successfully. Data length: {sheet.Data.Length}");
+                _logger.LogInformation("Sheet {Id} saved successfully. Data length: {DataLength}", id, sheet.Data.Length);
                 return Ok(new { success = true, message = "Sheet saved successfully" });
             }
             else
@@ -132,7 +142,7 @@ public class SheetsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error saving sheet: {ex.Message}");
+            _logger.LogError(ex, "Error saving sheet");
             return StatusCode(500, new { success = false, message = "Error saving sheet" });
         }
     }
@@ -143,13 +153,28 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (request == null || string.IsNullOrWhiteSpace(request.FileName))
+            {
+                return BadRequest(new { success = false, message = "Filename is required" });
+            }
+
+            var sanitizedFileName = System.Text.RegularExpressions.Regex.Replace(request.FileName, @"[\\/:*?""<>|]", "").Trim();
+            if (string.IsNullOrWhiteSpace(sanitizedFileName))
+            {
+                return BadRequest(new { success = false, message = "Invalid filename" });
+            }
+
+            if (sanitizedFileName.Length > 255)
+            {
+                return BadRequest(new { success = false, message = "Filename must be 255 characters or fewer" });
+            }
+
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
 
-            var sheet = await _sheetService.SaveSheetAsync(userId, request.FileName, "{\"numsheets\":1,\"currentname\":\"Sheet1\",\"sheetArr\":{\"Sheet1\":{\"name\":\"Sheet1\",\"sheetstr\":{\"savestr\":\"version:1.5\\nsheet:c:1:r:1:tvf:1\\n\"}}},\"currentid\":\"Sheet1\"}");
+            var sheet = await _sheetService.SaveSheetAsync(userId, sanitizedFileName, "{\"numsheets\":1,\"currentname\":\"Sheet1\",\"sheetArr\":{\"Sheet1\":{\"name\":\"Sheet1\",\"sheetstr\":{\"savestr\":\"version:1.5\\nsheet:c:1:r:1:tvf:1\\n\"}}},\"currentid\":\"Sheet1\"}");
             if (sheet == null)
             {
                 return StatusCode(500, new { success = false, message = "Error creating sheet" });
@@ -159,7 +184,7 @@ public class SheetsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error creating sheet: {ex.Message}");
+            _logger.LogError(ex, "Error creating sheet");
             return StatusCode(500, new { success = false, message = "Error creating sheet" });
         }
     }
@@ -170,19 +195,24 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId)) return Unauthorized();
+            if (!TryGetCurrentUserId(out int userId)) return Unauthorized();
 
             if (string.IsNullOrWhiteSpace(request?.FileName))
             {
                 return BadRequest(new { success = false, message = "Filename is required" });
             }
             
-            var sanitizedFileName = System.Text.RegularExpressions.Regex.Replace(request.FileName, @"[^a-zA-Z0-9 _\-\.]", "");
+            var sanitizedFileName = System.Text.RegularExpressions.Regex.Replace(request.FileName, @"[\\/:*?""<>|]", "").Trim();
             if (string.IsNullOrWhiteSpace(sanitizedFileName))
             {
                 return BadRequest(new { success = false, message = "Invalid filename" });
             }
+
+            if (sanitizedFileName.Length > 255)
+            {
+                return BadRequest(new { success = false, message = "Filename must be 255 characters or fewer" });
+            }
+
 
             var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null) return NotFound();
@@ -201,7 +231,7 @@ public class SheetsController : Controller
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error renaming sheet {id}: {ex.Message}");
+            _logger.LogError(ex, "Error renaming sheet {SheetId}", id);
             return StatusCode(500, new { success = false, message = "Server error" });
         }
     }
@@ -210,86 +240,47 @@ public class SheetsController : Controller
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Delete(int id)
     {
-        _logger.LogInformation($"Delete request received for sheet ID: {id}");
+        _logger.LogInformation("Delete request received for sheet ID: {SheetId}", id);
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
-                _logger.LogWarning($"Unauthorized delete attempt for sheet {id}");
+                _logger.LogWarning("Unauthorized delete attempt for sheet {SheetId}", id);
                 return Unauthorized();
             }
 
-            _logger.LogInformation($"Attempting to delete sheet {id} for user {userId}");
+            _logger.LogInformation("Attempting to delete sheet {SheetId} for user {UserId}", id, userId);
             var success = await _sheetService.DeleteSheetAsync(id, userId);
             if (!success)
             {
-                _logger.LogWarning($"Sheet {id} not found or not owned by user {userId}");
+                _logger.LogWarning("Sheet {SheetId} not found or not owned by user {UserId}", id, userId);
                 return NotFound();
             }
 
-            _logger.LogInformation($"Sheet {id} deleted successfully");
+            _logger.LogInformation("Sheet {SheetId} deleted successfully", id);
             return Ok(new { success = true, message = "Sheet deleted successfully" });
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error deleting sheet {id}: {ex.Message}");
+            _logger.LogError(ex, "Error deleting sheet {SheetId}", id);
             return StatusCode(500, new { success = false, message = "Error deleting sheet" });
         }
     }
 
-    // LEGACY: Use /api/spreadsheet/import instead
+    [Obsolete("Use /api/spreadsheet/import instead")]
     [HttpPost("import")]
-    [ValidateAntiForgeryToken]
-    public async Task<IActionResult> Import([FromForm] IFormFile file)
+    public IActionResult Import([FromForm] IFormFile file)
     {
-        try
-        {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
-            {
-                return Unauthorized();
-            }
-
-            if (file == null || file.Length == 0)
-            {
-                return BadRequest("No file uploaded");
-            }
-
-            var fileName = Path.GetFileNameWithoutExtension(file.FileName);
-            using (var stream = file.OpenReadStream())
-            {
-                var sheet = await _excelService.ImportFromExcelAsync(stream, userId, fileName);
-                if (sheet == null)
-                {
-                    return StatusCode(500, new { success = false, message = "Error importing file" });
-                }
-
-                // Save the imported sheet to database
-                var savedSheet = await _sheetService.SaveSheetAsync(userId, sheet.FileName, sheet.Data);
-                if (savedSheet == null)
-                {
-                    return StatusCode(500, new { success = false, message = "Error saving imported sheet" });
-                }
-
-                _logger.LogInformation($"Sheet imported and saved: {savedSheet.FileName} (ID: {savedSheet.Id})");
-                return Ok(new { success = true, id = savedSheet.Id, message = "Sheet imported successfully" });
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error importing sheet: {ex.Message}");
-            return StatusCode(500, new { success = false, message = "Error importing sheet" });
-        }
+        _logger.LogWarning("Legacy import endpoint called. Returning 410 Gone.");
+        return StatusCode(410, new { success = false, message = "This endpoint is deprecated. Use /api/spreadsheet/import instead." });
     }
 
-    [HttpGet("export/{id}")]
-    public async Task<IActionResult> Export(int id)
+    [HttpGet("download/{id}")]
+    public async Task<IActionResult> Download(int id)
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
@@ -300,18 +291,18 @@ public class SheetsController : Controller
                 return NotFound();
             }
 
-            var excelStream = await _excelService.ExportToExcelAsync(sheet);
-            if (excelStream == null)
+            var bytes = await _spreadsheetService.ExportAsync(SpreadsheetData.FromSheet(sheet), "Xlsx");
+            if (bytes == null || bytes.Length == 0)
             {
-                return StatusCode(500, "Error exporting sheet");
+                return StatusCode(500, "Error generating Excel file");
             }
 
             var fileName = $"{sheet.FileName}.xlsx";
-            return File(excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
+            return File(bytes, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", fileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting sheet: {ex.Message}");
+            _logger.LogError(ex, "Error exporting sheet");
             return StatusCode(500, "Error exporting sheet");
         }
     }
@@ -321,8 +312,7 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
@@ -333,30 +323,28 @@ public class SheetsController : Controller
                 return NotFound();
             }
 
-            var csvStream = await _excelService.ExportToCsvAsync(sheet);
-            if (csvStream == null)
+            var bytes = await _spreadsheetService.ExportAsync(SpreadsheetData.FromSheet(sheet), "Csv");
+            if (bytes == null || bytes.Length == 0)
             {
-                return StatusCode(500, "Error exporting to CSV");
+                return StatusCode(500, "Error generating CSV file");
             }
 
             var fileName = $"{sheet.FileName}.csv";
-            return File(csvStream, "text/csv", fileName);
+            return File(bytes, "text/csv", fileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting CSV: {ex.Message}");
+            _logger.LogError(ex, "Error exporting CSV");
             return StatusCode(500, "Error exporting CSV");
         }
     }
 
-    // LEGACY: Use JS export or /api/spreadsheet/export/{id} instead
     [HttpGet("export-format/{id}/{format}")]
     public async Task<IActionResult> ExportFormat(int id, string format)
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
@@ -367,6 +355,13 @@ public class SheetsController : Controller
                 return NotFound();
             }
 
+            if (string.IsNullOrWhiteSpace(format))
+            {
+                return BadRequest("Format is required");
+            }
+            
+            var formatKey = format.ToLower();
+            
             var contentTypes = new Dictionary<string, string>
             {
                 { "xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" },
@@ -375,12 +370,16 @@ public class SheetsController : Controller
                 { "html", "text/html" },
                 { "ods", "application/vnd.oasis.opendocument.spreadsheet" }
             };
-
-            var formatKey = format.ToLower();
-            var formatCapitalized = char.ToUpper(format[0]) + format.Substring(1).ToLower();
             
-            var stream = await _excelService.ExportToFormatAsync(sheet, formatCapitalized);
-            if (stream == null)
+            if (!contentTypes.ContainsKey(formatKey))
+            {
+                return BadRequest($"Unsupported format: {System.Net.WebUtility.HtmlEncode(format)}");
+            }
+            
+            var formatCapitalized = char.ToUpper(formatKey[0]) + formatKey.Substring(1);
+            
+            var bytes = await _spreadsheetService.ExportAsync(SpreadsheetData.FromSheet(sheet), formatCapitalized);
+            if (bytes == null || bytes.Length == 0)
             {
                 return StatusCode(500, $"Error exporting to {format}");
             }
@@ -388,23 +387,21 @@ public class SheetsController : Controller
             var fileName = $"{sheet.FileName}.{formatKey}";
             var contentType = contentTypes.GetValueOrDefault(formatKey, "application/octet-stream");
             
-            return File(stream, contentType, fileName);
+            return File(bytes, contentType, fileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting {format}: {ex.Message}");
-            return StatusCode(500, $"Error exporting {format}");
+            _logger.LogError(ex, "Error exporting {Format}", format);
+            return StatusCode(500, "Error generating export file");
         }
     }
-
 
     [HttpGet("export-pdf/{id}")]
     public async Task<IActionResult> ExportPdf(int id)
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId))
+            if (!TryGetCurrentUserId(out int userId))
             {
                 return Unauthorized();
             }
@@ -415,19 +412,18 @@ public class SheetsController : Controller
                 return NotFound();
             }
 
-            // Use the PHP CLI export service for PDF
-            var pdfStream = await _excelService.ExportToFormatAsync(sheet, "Pdf");
-            if (pdfStream == null)
+            var bytes = await _spreadsheetService.ExportAsync(SpreadsheetData.FromSheet(sheet), "Pdf");
+            if (bytes == null || bytes.Length == 0)
             {
                 return StatusCode(500, "Error exporting to PDF");
             }
 
             var fileName = $"{sheet.FileName}.pdf";
-            return File(pdfStream, "application/pdf", fileName);
+            return File(bytes, "application/pdf", fileName);
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting PDF: {ex.Message}");
+            _logger.LogError(ex, "Error exporting PDF");
             return StatusCode(500, "Error exporting PDF");
         }
     }
@@ -437,14 +433,17 @@ public class SheetsController : Controller
     {
         try
         {
-            var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            if (string.IsNullOrEmpty(userIdStr) || !int.TryParse(userIdStr, out int userId)) return Unauthorized();
+            if (!TryGetCurrentUserId(out int userId)) return Unauthorized();
 
-            // 1. Check if user is authenticated with Google and has a token
+            var googleScheme = await _schemeProvider.GetSchemeAsync("Google");
+            if (googleScheme == null)
+            {
+                return BadRequest("Google integration is not configured. Please set credentials in appsettings.");
+            }
+
             var authResult = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
             if (!authResult.Succeeded)
             {
-                // Challenge Google authentication, redirect back here when done
                 var properties = new AuthenticationProperties { RedirectUri = Url.Action("ExportToGoogleDrive", new { id }) };
                 return Challenge(properties, "Google");
             }
@@ -452,19 +451,17 @@ public class SheetsController : Controller
             var accessToken = authResult.Properties?.GetTokenValue("access_token");
             if (string.IsNullOrEmpty(accessToken))
             {
-                // Force re-authentication if token is missing
                 var properties = new AuthenticationProperties { RedirectUri = Url.Action("ExportToGoogleDrive", new { id }) };
                 return Challenge(properties, "Google");
             }
 
-            // 2. Get the sheet data as Excel stream
             var sheet = await _sheetService.GetSheetAsync(id, userId);
             if (sheet == null) return NotFound();
 
-            var excelStream = await _excelService.ExportToExcelAsync(sheet);
-            if (excelStream == null) return StatusCode(500, "Error generating Excel file for export.");
+            var bytes = await _spreadsheetService.ExportAsync(SpreadsheetData.FromSheet(sheet), "Xlsx");
+            if (bytes == null || bytes.Length == 0) return StatusCode(500, "Error generating Excel file for export.");
+            using var excelStream = new MemoryStream(bytes);
 
-            // 3. Connect to Google Drive API
             var credential = GoogleCredential.FromAccessToken(accessToken);
             var driveService = new DriveService(new BaseClientService.Initializer
             {
@@ -472,48 +469,41 @@ public class SheetsController : Controller
                 ApplicationName = "Social-Calc"
             });
 
-            // 4. Upload and convert to native Google Sheet
             var fileMetadata = new GoogleFile
             {
                 Name = sheet.FileName,
-                MimeType = "application/vnd.google-apps.spreadsheet" // Auto-convert to Google Sheet
+                MimeType = "application/vnd.google-apps.spreadsheet"
             };
 
             var request = driveService.Files.Create(fileMetadata, excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
             request.Fields = "id, webViewLink";
-            var response = await request.UploadAsync();
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+
+            var response = await request.UploadAsync(cts.Token);
 
             if (response.Status == Google.Apis.Upload.UploadStatus.Failed)
             {
-                _logger.LogError($"Google Drive upload failed: {response.Exception?.Message}");
+                _logger.LogError(response.Exception, "Google Drive upload failed: {Message}", response.Exception?.Message);
                 return StatusCode(500, "Failed to upload to Google Drive.");
             }
 
             var uploadedFile = request.ResponseBody;
             
-            // Redirect to the newly created Google Sheet
+            if (string.IsNullOrEmpty(uploadedFile?.WebViewLink))
+            {
+                _logger.LogError("Google Drive upload succeeded but returned no web view link.");
+                return StatusCode(500, "Failed to retrieve Google Drive link.");
+            }
+            
             return Redirect(uploadedFile.WebViewLink);
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting to Google Drive: {ex.Message}");
+            _logger.LogError(ex, "Error exporting to Google Drive");
             return StatusCode(500, "Error exporting to Google Drive");
         }
     }
 }
 
-// Request DTOs
-public class SaveSheetRequest
-{
-    public string Data { get; set; } = null!;
-}
 
-public class RenameSheetRequest
-{
-    public string FileName { get; set; } = null!;
-}
-
-public class CreateSheetRequest
-{
-    public string FileName { get; set; } = "";
-}

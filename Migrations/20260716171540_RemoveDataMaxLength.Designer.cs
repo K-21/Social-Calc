@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using SocialCalc.Web.Data;
@@ -11,9 +12,11 @@ using SocialCalc.Web.Data;
 namespace SocialCalc.Web.Migrations
 {
     [DbContext(typeof(ApplicationDbContext))]
-    partial class ApplicationDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260716171540_RemoveDataMaxLength")]
+    partial class RemoveDataMaxLength
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -154,6 +157,43 @@ namespace SocialCalc.Web.Migrations
                     b.ToTable("AspNetUserTokens", (string)null);
                 });
 
+            modelBuilder.Entity("SocialCalc.Web.Models.PasswordResetToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTime>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<bool>("IsUsed")
+                        .HasColumnType("boolean");
+
+                    b.Property<string>("Token")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("character varying(500)");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("integer");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ExpiresAt");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PasswordResetTokens");
+                });
+
             modelBuilder.Entity("SocialCalc.Web.Models.Sheet", b =>
                 {
                     b.Property<int>("Id")
@@ -187,7 +227,7 @@ namespace SocialCalc.Web.Migrations
 
                     b.HasIndex("CreatedAt");
 
-                    b.HasIndex("UserId", "IsDeleted", "UpdatedAt");
+                    b.HasIndex("UserId", "UpdatedAt");
 
                     b.ToTable("Sheets");
                 });
@@ -320,6 +360,17 @@ namespace SocialCalc.Web.Migrations
                         .IsRequired();
                 });
 
+            modelBuilder.Entity("SocialCalc.Web.Models.PasswordResetToken", b =>
+                {
+                    b.HasOne("SocialCalc.Web.Models.User", "User")
+                        .WithMany("ResetTokens")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("SocialCalc.Web.Models.Sheet", b =>
                 {
                     b.HasOne("SocialCalc.Web.Models.User", "User")
@@ -333,6 +384,8 @@ namespace SocialCalc.Web.Migrations
 
             modelBuilder.Entity("SocialCalc.Web.Models.User", b =>
                 {
+                    b.Navigation("ResetTokens");
+
                     b.Navigation("Sheets");
                 });
 #pragma warning restore 612, 618

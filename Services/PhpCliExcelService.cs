@@ -4,33 +4,28 @@ using SocialCalc.Web.Models;
 
 namespace SocialCalc.Web.Services;
 
-public class PhpCliExcelService : IExcelService
+public class PhpCliExcelService : SpreadsheetServiceBase
 {
     private readonly IConfiguration _configuration;
-    private readonly ILogger<PhpCliExcelService> _logger;
 
-    public PhpCliExcelService(IConfiguration configuration, ILogger<PhpCliExcelService> logger)
+    public PhpCliExcelService(IConfiguration configuration, ILogger<PhpCliExcelService> logger) : base(logger)
     {
         _configuration = configuration;
-        _logger = logger;
     }
 
-    public async Task<Stream?> ExportToExcelAsync(Sheet sheet)
-    {
-        return await ExportToFormatAsync(sheet, "Xlsx");
-    }
-
-    public async Task<Stream?> ExportToCsvAsync(Sheet sheet)
-    {
-        return await ExportToFormatAsync(sheet, "Csv");
-    }
-
-    public async Task<Stream?> ExportToFormatAsync(Sheet sheet, string format)
+    public override async Task<byte[]> ExportAsync(SpreadsheetData data, string format)
     {
         var phpPath = _configuration["AppSettings:PhpCliPath"] ?? "php";
         var scriptsDir = _configuration["AppSettings:PhpScriptsDir"] ?? "excelinterop";
         var tempDir = _configuration["AppSettings:PhpTempDir"] ?? Path.Combine(scriptsDir, "tmp");
         var timeoutSeconds = _configuration.GetValue<int?>("AppSettings:PhpCliTimeoutSeconds") ?? 30;
+
+        var allowedFormats = new[] { "Xlsx", "Xls", "Csv", "Html", "Ods", "Pdf" };
+        if (!allowedFormats.Contains(format, StringComparer.OrdinalIgnoreCase))
+        {
+            _logger.LogError("Invalid format specified for export: {Format}", format);
+            return Array.Empty<byte>();
+        }
 
         Directory.CreateDirectory(tempDir);
 
@@ -51,33 +46,39 @@ public class PhpCliExcelService : IExcelService
 
         try
         {
-            _logger.LogInformation($"Export: Writing data for sheet {sheet.FileName}. Length={sheet.Data?.Length ?? 0}");
+            _logger.LogInformation("Export: Writing data for sheet {FileName}. Length={Length}", data.FileName, data.JsonData?.Length ?? 0);
             
-            // Use UTF8 without BOM - important for PHP json_decode to work correctly
             var utf8NoBom = new UTF8Encoding(false);
-            await File.WriteAllTextAsync(inputFile, sheet.Data ?? string.Empty, utf8NoBom);
+            await File.WriteAllTextAsync(inputFile, data.JsonData ?? string.Empty, utf8NoBom);
 
+
+
+            var safeFileName = data.FileName?.Replace("\"", "\\\"") ?? "Exported";
             var psi = new ProcessStartInfo
             {
                 FileName = phpPath,
-                Arguments = $"\"{scriptPath}\" \"{inputFile}\" \"{outputFile}\" {format} \"{sheet.FileName}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            psi.ArgumentList.Add(scriptPath);
+            psi.ArgumentList.Add(inputFile);
+            psi.ArgumentList.Add(outputFile);
+            psi.ArgumentList.Add(format);
+            psi.ArgumentList.Add(safeFileName);
 
             using var proc = Process.Start(psi);
             if (proc == null)
             {
                 _logger.LogError("Failed to start PHP process for export");
-                return null;
+                return Array.Empty<byte>();
             }
 
             var outputTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
 
-            var cts = new CancellationTokenSource(timeoutSeconds * 1000);
+            using var cts = new CancellationTokenSource(timeoutSeconds * 1000);
             try
             {
                 await proc.WaitForExitAsync(cts.Token);
@@ -86,7 +87,7 @@ public class PhpCliExcelService : IExcelService
             {
                 try { proc.Kill(); } catch { }
                 _logger.LogError("PHP export process timed out");
-                return null;
+                return Array.Empty<byte>();
             }
 
             var stdout = await outputTask;
@@ -94,30 +95,24 @@ public class PhpCliExcelService : IExcelService
 
             if (proc.ExitCode != 0)
             {
-                _logger.LogError($"PHP export failed for User {sheet.UserId}, file {sheet.FileName}. ExitCode: {proc.ExitCode}, Stderr: {stderr}");
-                return null;
+                _logger.LogError("PHP export failed. ExitCode: {ExitCode}, Stderr: {Stderr}", proc.ExitCode, stderr);
+                return Array.Empty<byte>();
             }
 
             if (!File.Exists(outputFile))
             {
-                _logger.LogError($"PHP export did not produce output file: {outputFile}");
-                return null;
+                _logger.LogError("PHP export succeeded but output file not found");
+                return Array.Empty<byte>();
             }
 
-            var ms = new MemoryStream();
-            using (var fs = File.OpenRead(outputFile))
-            {
-                await fs.CopyToAsync(ms);
-            }
-            ms.Seek(0, SeekOrigin.Begin);
-
-            _logger.LogInformation($"Sheet exported to {format} (PHP CLI): {sheet.FileName}");
-            return ms;
+            var result = await File.ReadAllBytesAsync(outputFile);
+            _logger.LogInformation("Export finished for {FileName}. Size: {Size} bytes", data.FileName, result.Length);
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error exporting to Excel via PHP CLI: {ex.Message}");
-            return null;
+            _logger.LogError(ex, "Error exporting to Excel via PHP CLI");
+            return Array.Empty<byte>();
         }
         finally
         {
@@ -126,7 +121,7 @@ public class PhpCliExcelService : IExcelService
         }
     }
 
-    public async Task<Sheet?> ImportFromExcelAsync(Stream fileStream, int userId, string fileName)
+    public override async Task<SpreadsheetData> ImportAsync(Stream fileStream, string format)
     {
         var phpPath = _configuration["AppSettings:PhpCliPath"] ?? "php";
         var scriptsDir = _configuration["AppSettings:PhpScriptsDir"] ?? "excelinterop";
@@ -136,12 +131,15 @@ public class PhpCliExcelService : IExcelService
         Directory.CreateDirectory(tempDir);
 
         var baseName = Path.Combine(tempDir, "tmp_" + Guid.NewGuid().ToString("N"));
-        var inputFile = baseName + Path.GetExtension(fileName);
+        var formatExt = string.IsNullOrEmpty(format) ? ".xlsx" : (format.StartsWith(".") ? format : "." + format);
+        var inputFile = baseName + formatExt;
+        var outputFile = baseName + ".json";
         var scriptPath = Path.Combine(scriptsDir, "import.php");
 
         try
         {
-            using (var fs = File.Open(inputFile, FileMode.Create, FileAccess.Write, FileShare.None))
+            // Write input stream to temp file
+            using (var fs = new FileStream(inputFile, FileMode.Create, FileAccess.Write, FileShare.None, 4096, true))
             {
                 await fileStream.CopyToAsync(fs);
             }
@@ -149,24 +147,26 @@ public class PhpCliExcelService : IExcelService
             var psi = new ProcessStartInfo
             {
                 FileName = phpPath,
-                Arguments = $"\"{scriptPath}\" \"{inputFile}\"",
                 RedirectStandardOutput = true,
                 RedirectStandardError = true,
                 UseShellExecute = false,
                 CreateNoWindow = true
             };
+            psi.ArgumentList.Add(scriptPath);
+            psi.ArgumentList.Add(inputFile);
+            psi.ArgumentList.Add(outputFile);
 
             using var proc = Process.Start(psi);
             if (proc == null)
             {
                 _logger.LogError("Failed to start PHP process for import");
-                return null;
+                return new SpreadsheetData();
             }
 
             var outputTask = proc.StandardOutput.ReadToEndAsync();
             var errTask = proc.StandardError.ReadToEndAsync();
 
-            var cts = new CancellationTokenSource(timeoutSeconds * 1000);
+            using var cts = new CancellationTokenSource(timeoutSeconds * 1000);
             try
             {
                 await proc.WaitForExitAsync(cts.Token);
@@ -175,7 +175,7 @@ public class PhpCliExcelService : IExcelService
             {
                 try { proc.Kill(); } catch { }
                 _logger.LogError("PHP import process timed out");
-                return null;
+                return new SpreadsheetData();
             }
 
             var stdout = await outputTask;
@@ -183,60 +183,29 @@ public class PhpCliExcelService : IExcelService
 
             if (proc.ExitCode != 0)
             {
-                _logger.LogError($"PHP import failed for User {userId}, file {fileName}. ExitCode: {proc.ExitCode}, Stderr: {stderr}");
-                return null;
+                _logger.LogError("PHP import failed. ExitCode: {ExitCode}, Stderr: {Stderr}", proc.ExitCode, stderr);
+                return new SpreadsheetData();
             }
 
-            // CLI import.php prefixes output with "$---$" before the JSON
-            var jsonIndex = stdout.IndexOf("$---$");
-            var json = jsonIndex >= 0 ? stdout.Substring(jsonIndex + 5) : stdout;
-            json = json.Trim();
-
-            var sheet = new Sheet
+            var json = await File.ReadAllTextAsync(outputFile);
+            
+            var result = new SpreadsheetData
             {
-                UserId = userId,
-                FileName = fileName,
-                Data = json,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
+                JsonData = json,
+                FileName = "Imported"
             };
 
-            _logger.LogInformation($"Sheet imported from Excel (PHP CLI): {fileName}");
-            return sheet;
+            return result;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error importing from Excel via PHP CLI: {ex.Message}");
-            return null;
+            _logger.LogError(ex, "Error importing from Excel via PHP CLI");
+            return new SpreadsheetData();
         }
         finally
         {
             TryDelete(inputFile);
-        }
-    }
-
-    public async Task<bool> IsValidExcelFileAsync(Stream fileStream)
-    {
-        try
-        {
-            fileStream.Seek(0, SeekOrigin.Begin);
-            var buffer = new byte[4];
-            await fileStream.ReadAsync(buffer, 0, 4);
-
-            var isXlsx = buffer[0] == 0x50 && buffer[1] == 0x4B;
-            var isXls = buffer[0] == 0xD0 && buffer[1] == 0xCF;
-            var isOds = buffer[0] == 0x50 && buffer[1] == 0x4B; // ODS is a ZIP format too
-            
-            // For CSV we just accept it if it's not a known binary format but doesn't have 0x00 bytes
-            var isCsv = buffer[0] != 0x00 && buffer[1] != 0x00;
-
-            fileStream.Seek(0, SeekOrigin.Begin);
-            return isXlsx || isXls || isOds || isCsv;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error validating Excel file: {ex.Message}");
-            return false;
+            TryDelete(outputFile);
         }
     }
 
@@ -247,6 +216,9 @@ public class PhpCliExcelService : IExcelService
             if (!string.IsNullOrEmpty(path) && File.Exists(path))
                 File.Delete(path);
         }
-        catch { }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete temp file {Path}", path);
+        }
     }
 }

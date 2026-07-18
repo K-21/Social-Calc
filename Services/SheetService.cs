@@ -34,12 +34,12 @@ public class SheetService : ISheetService
             await _context.SaveChangesAsync();
 
 
-            _logger.LogInformation($"Sheet saved: {fileName} for user {userId}");
+            _logger.LogInformation("Sheet saved: {FileName} for user {UserId}", fileName, userId);
             return sheet;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error saving sheet: {ex.Message}");
+            _logger.LogError(ex, "Error saving sheet: {FileName}", fileName);
             return null;
         }
     }
@@ -48,20 +48,21 @@ public class SheetService : ISheetService
     {
         try
         {
+            sheet.UpdatedAt = DateTime.UtcNow;
             _context.Sheets.Update(sheet);
             await _context.SaveChangesAsync();
 
-            _logger.LogInformation($"Sheet updated: {sheet.FileName} (ID: {sheet.Id})");
+            _logger.LogInformation("Sheet updated: {FileName} (ID: {SheetId})", sheet.FileName, sheet.Id);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error updating sheet: {ex.Message}");
+            _logger.LogError(ex, "Error updating sheet: {FileName}", sheet?.FileName);
             return false;
         }
     }
 
-    public async Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 50)
+    public async Task<List<Sheet>> GetUserSheetsAsync(int userId, int page = 1, int pageSize = 10)
     {
         try
         {
@@ -76,7 +77,7 @@ public class SheetService : ISheetService
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error retrieving sheets for user {userId}: {ex.Message}");
+            _logger.LogError(ex, "Error retrieving sheets for user {UserId}", userId);
             return new List<Sheet>();
         }
     }
@@ -89,7 +90,7 @@ public class SheetService : ISheetService
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error counting sheets for user {userId}: {ex.Message}");
+            _logger.LogError(ex, "Error counting sheets for user {UserId}", userId);
             return 0;
         }
     }
@@ -105,23 +106,7 @@ public class SheetService : ISheetService
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error retrieving sheet {sheetId}: {ex.Message}");
-            return null;
-        }
-    }
-
-    public async Task<Sheet?> GetSheetByIdAsync(int sheetId, int userId)
-    {
-        try
-        {
-            var sheet = await _context.Sheets
-                .FirstOrDefaultAsync(s => s.Id == sheetId && s.UserId == userId);
-
-            return sheet;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Error retrieving sheet by id {sheetId}: {ex.Message}");
+            _logger.LogError(ex, "Error retrieving sheet {SheetId}", sheetId);
             return null;
         }
     }
@@ -136,22 +121,19 @@ public class SheetService : ISheetService
                 return false;
             }
 
-            // Hard delete - actually remove from database
-            _context.Sheets.Remove(sheet);
+            // Soft delete
+            sheet.IsDeleted = true;
+            sheet.UpdatedAt = DateTime.UtcNow;
+            _context.Sheets.Update(sheet);
             await _context.SaveChangesAsync();
 
-
-
-            _logger.LogInformation($"Sheet permanently deleted: {sheetId} ({sheet.FileName}) for user {userId}");
+            _logger.LogInformation("Sheet soft deleted: {SheetId} ({FileName}) for user {UserId}", sheetId, sheet.FileName, userId);
             return true;
         }
         catch (Exception ex)
         {
-            _logger.LogError($"Error deleting sheet {sheetId}: {ex.Message}");
+            _logger.LogError(ex, "Error deleting sheet {SheetId}", sheetId);
             return false;
         }
     }
-
-
 }
-

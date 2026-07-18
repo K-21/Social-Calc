@@ -428,6 +428,83 @@ public class SheetsController : Controller
         }
     }
 
+    [HttpPost("export-gdrive-api/{id}")]
+    [ValidateAntiForgeryToken]
+    public async Task<IActionResult> ExportToGoogleDriveApi(int id, IFormFile file)
+    {
+        try
+        {
+            if (!TryGetCurrentUserId(out int userId)) return Unauthorized(new { message = "Unauthorized" });
+
+            var googleScheme = await _schemeProvider.GetSchemeAsync("Google");
+            if (googleScheme == null)
+            {
+                return BadRequest(new { message = "Google integration is not configured. Please set credentials in appsettings." });
+            }
+
+            var authResult = await HttpContext.AuthenticateAsync(IdentityConstants.ExternalScheme);
+            if (!authResult.Succeeded)
+            {
+                return Unauthorized(new { message = "Not authenticated with Google", needsAuth = true });
+            }
+
+            var accessToken = authResult.Properties?.GetTokenValue("access_token");
+            if (string.IsNullOrEmpty(accessToken))
+            {
+                return Unauthorized(new { message = "Not authenticated with Google", needsAuth = true });
+            }
+
+            var sheet = await _sheetService.GetSheetAsync(id, userId);
+            if (sheet == null) return NotFound(new { message = "Sheet not found." });
+
+            if (file == null || file.Length == 0)
+                return BadRequest(new { message = "No file uploaded." });
+
+            using var excelStream = file.OpenReadStream();
+
+            var credential = GoogleCredential.FromAccessToken(accessToken);
+            var driveService = new DriveService(new BaseClientService.Initializer
+            {
+                HttpClientInitializer = credential,
+                ApplicationName = "Social-Calc"
+            });
+
+            var fileMetadata = new GoogleFile
+            {
+                Name = sheet.FileName,
+                MimeType = "application/vnd.google-apps.spreadsheet"
+            };
+
+            var request = driveService.Files.Create(fileMetadata, excelStream, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            request.Fields = "id, webViewLink";
+            using var cts = CancellationTokenSource.CreateLinkedTokenSource(HttpContext.RequestAborted);
+            cts.CancelAfter(TimeSpan.FromSeconds(60));
+
+            var response = await request.UploadAsync(cts.Token);
+
+            if (response.Status == Google.Apis.Upload.UploadStatus.Failed)
+            {
+                _logger.LogError(response.Exception, "Google Drive upload failed: {Message}", response.Exception?.Message);
+                return StatusCode(500, new { message = "Failed to upload to Google Drive." });
+            }
+
+            var uploadedFile = request.ResponseBody;
+            
+            if (string.IsNullOrEmpty(uploadedFile?.WebViewLink))
+            {
+                _logger.LogError("Google Drive upload succeeded but returned no web view link.");
+                return StatusCode(500, new { message = "Failed to retrieve Google Drive link." });
+            }
+            
+            return Ok(new { success = true, link = uploadedFile.WebViewLink });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error exporting to Google Drive");
+            return StatusCode(500, new { message = "Error exporting to Google Drive" });
+        }
+    }
+
     [HttpGet("export-gdrive/{id}")]
     public async Task<IActionResult> ExportToGoogleDrive(int id)
     {

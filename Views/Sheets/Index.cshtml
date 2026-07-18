@@ -55,7 +55,7 @@
                                     <i class="fas fa-download"></i> Export
                                 </button>
                                 <ul class="dropdown-menu">
-                                    <li><a class="dropdown-item" href="#" onclick="exportSheet(@sheet.Id, 'gdrive')">
+                                    <li><a class="dropdown-item" href="#" onclick="exportSheetApiGdrive(@sheet.Id, '@sheet.FileName')">
                                         <i class="fab fa-google-drive text-success"></i> Save to Google Drive
                                     </a></li>
                                     <li><hr class="dropdown-divider"></li>
@@ -340,6 +340,101 @@
             } catch(e) {
                 alert("Error checking PDF status: " + e.message);
                 document.getElementById(`sheetName-${sheetId}`).innerText = originalName;
+            }
+        }
+
+        async function exportSheetApiGdrive(sheetId, fileName) {
+            try {
+                const nameSpan = document.getElementById(`sheetName-${sheetId}`);
+                const originalName = nameSpan.innerText;
+                nameSpan.innerHTML = `${originalName} <span class="spinner-border spinner-border-sm text-success" role="status" aria-hidden="true"></span>`;
+                
+                const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                const response = await fetch(`/api/spreadsheet/export/${sheetId}`, {
+                    headers: { 'RequestVerificationToken': token }
+                });
+                if (!response.ok) throw new Error("Failed to fetch export data");
+                const data = await response.json();
+                
+                const wb = XLSX.utils.book_new();
+                
+                data.sheets.forEach(sheet => {
+                    const ws = XLSX.utils.aoa_to_sheet([]);
+                    let maxR = -1;
+                    let maxC = -1;
+                    
+                    if (sheet.cells) {
+                        sheet.cells.forEach(c => {
+                            const ref = XLSX.utils.encode_cell({c: c.c, r: c.r});
+                            ws[ref] = { t: c.t, v: c.v };
+                            if (c.f) ws[ref].f = c.f; 
+                            
+                            if(c.c > maxC) maxC = c.c;
+                            if(c.r > maxR) maxR = c.r;
+                        });
+                    }
+                    
+                    if (sheet.merges && sheet.merges.length > 0) {
+                        ws['!merges'] = sheet.merges.map(m => ({
+                            s: { r: m.s.r, c: m.s.c },
+                            e: { r: m.e.r, c: m.e.c }
+                        }));
+                    }
+                    
+                    if (sheet.cols && sheet.cols.length > 0) {
+                        ws['!cols'] = [];
+                        sheet.cols.forEach(col => {
+                            ws['!cols'][col.index] = { wpx: col.size };
+                        });
+                    }
+                    
+                    if (maxR >= 0 && maxC >= 0) {
+                        ws['!ref'] = XLSX.utils.encode_range({s:{c:0,r:0}, e:{c:maxC, r:maxR}});
+                    } else {
+                        ws['!ref'] = "A1:A1";
+                    }
+                    
+                    XLSX.utils.book_append_sheet(wb, ws, sheet.name || "Sheet");
+                });
+                
+                const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                const formData = new FormData();
+                const safeName = (data.fileName || fileName || "export").replace(/[^a-zA-Z0-9_\- ]/g, "").trim();
+                formData.append("file", blob, safeName + ".xlsx");
+                
+                const driveResponse = await fetch(`/Sheets/export-gdrive-api/${sheetId}`, {
+                    method: 'POST',
+                    headers: { 'RequestVerificationToken': token },
+                    body: formData
+                });
+                
+                if (driveResponse.status === 401) {
+                    const authData = await driveResponse.json();
+                    if (authData.needsAuth) {
+                        window.location.href = `/sheets/export-gdrive/${sheetId}`;
+                        return;
+                    }
+                }
+                
+                if (!driveResponse.ok) {
+                    const err = await driveResponse.text();
+                    throw new Error(err || "Failed to upload to Google Drive");
+                }
+                
+                const result = await driveResponse.json();
+                if (result.success && result.link) {
+                    window.open(result.link, '_blank');
+                } else {
+                    throw new Error("Upload failed");
+                }
+                
+                nameSpan.innerText = originalName;
+            } catch (e) {
+                console.error(e);
+                alert("Error exporting to Google Drive: " + e.message);
+                document.getElementById(`sheetName-${sheetId}`).innerText = fileName;
             }
         }
 

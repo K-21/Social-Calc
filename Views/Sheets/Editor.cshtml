@@ -370,8 +370,93 @@
         }
 
         // Export Google Drive
-        document.getElementById('btnExportGoogleDrive').addEventListener('click', function() {
-            window.location.href = `/sheets/export-gdrive/@(Model?.Id ?? 0)`;
+        document.getElementById('btnExportGoogleDrive').addEventListener('click', async function() {
+            try {
+                showSavingIndicator(true);
+                document.getElementById('saveStatusText').textContent = 'Uploading to Drive...';
+                
+                if (!spreadsheet || !spreadsheet.sheet) {
+                    throw new Error("Spreadsheet not initialized");
+                }
+                
+                // Get data from SocialCalc
+                const savestr = spreadsheet.CreateSpreadsheetSave();
+                const parts = spreadsheet.DecodeSpreadsheetSave(savestr);
+                const sheet = parts.sheet;
+                
+                const ws = XLSX.utils.aoa_to_sheet([]);
+                
+                let maxR = -1, maxC = -1;
+                for (let cellId in sheet.cells) {
+                    const c = sheet.cells[cellId];
+                    const ref = XLSX.utils.encode_cell({c: c.col - 1, r: c.row - 1});
+                    
+                    let cellType = 's';
+                    let cellVal = c.datavalue;
+                    if (c.datatype === 'v') cellType = 'n';
+                    else if (c.datatype === 'f') {
+                        cellType = 'n';
+                        ws[ref] = { t: cellType, v: cellVal, f: c.formula };
+                        continue;
+                    }
+                    
+                    ws[ref] = { t: cellType, v: cellVal };
+                    if (c.col - 1 > maxC) maxC = c.col - 1;
+                    if (c.row - 1 > maxR) maxR = c.row - 1;
+                }
+                
+                if (maxR >= 0 && maxC >= 0) {
+                    ws['!ref'] = XLSX.utils.encode_range({s:{c:0,r:0}, e:{c:maxC, r:maxR}});
+                } else {
+                    ws['!ref'] = "A1:A1";
+                }
+                
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+                
+                // Generate Excel file as Blob
+                const excelArray = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+                const blob = new Blob([excelArray], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+                
+                const formData = new FormData();
+                const fileName = "@(Model?.FileName ?? "export").xlsx";
+                formData.append("file", blob, fileName);
+                
+                const token = document.querySelector('input[name="__RequestVerificationToken"]').value;
+                const response = await fetch(`/sheets/export-gdrive-api/@(Model?.Id ?? 0)`, {
+                    method: 'POST',
+                    headers: {
+                        'RequestVerificationToken': token
+                    },
+                    body: formData
+                });
+                
+                if (response.status === 401) {
+                    // Need to authorize Google
+                    const data = await response.json();
+                    if (data.needsAuth) {
+                        window.location.href = `/sheets/export-gdrive/@(Model?.Id ?? 0)`;
+                        return;
+                    }
+                }
+                
+                if (!response.ok) {
+                    const err = await response.text();
+                    throw new Error(err || "Failed to upload to Google Drive");
+                }
+                
+                const data = await response.json();
+                if (data.success && data.link) {
+                    window.open(data.link, '_blank');
+                    showSavedIndicator();
+                } else {
+                    throw new Error("Upload failed");
+                }
+            } catch(e) {
+                console.error(e);
+                alert("Error exporting to Google Drive: " + e.message);
+                showSavingIndicator(false);
+            }
         });
 
         // Helper function for SheetJS export

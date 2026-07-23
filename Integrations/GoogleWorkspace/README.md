@@ -25,8 +25,8 @@ This directory contains all the code and configuration required to deploy the So
    ```bash
    clasp push
    ```
-5. Update `Config.gs` with your live ASP.NET Core API Base URL and secure API key.
-
+5. Update `Config.gs` with your live ASP.NET Core API Base URL.
+6. Ask your users to generate a **Personal Access Token** from their SocialCalc "Developer Settings" page and input it into the Add-on UI.
 ### Publishing to Google Workspace Marketplace
 1. Navigate to the Google Cloud Console for your GCP Project.
 2. Go to **APIs & Services** > **OAuth consent screen** and configure it.

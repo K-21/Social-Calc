@@ -18,6 +18,7 @@ public class User : IdentityUser<int>
     // Navigation
     public virtual ICollection<Sheet> Sheets { get; set; } = new List<Sheet>();
     public virtual ICollection<PasswordResetToken> ResetTokens { get; set; } = new List<PasswordResetToken>();
+    public virtual ICollection<PersonalAccessToken> ApiTokens { get; set; } = new List<PersonalAccessToken>();
 }
 
 public class Sheet
@@ -63,6 +64,30 @@ public class PasswordResetToken
     public DateTime ExpiresAt { get; set; }
 
     public bool IsUsed { get; set; } = false;
+
+    // Navigation
+    public virtual User User { get; set; } = null!;
+}
+
+public class PersonalAccessToken
+{
+    [Key]
+    public int Id { get; set; }
+
+    [Required]
+    public int UserId { get; set; }
+
+    [Required]
+    [StringLength(100)]
+    public string Name { get; set; } = "API Token";
+
+    [Required]
+    [StringLength(255)]
+    public string TokenHash { get; set; } = null!;
+
+    public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
+
+    public DateTime? LastUsedAt { get; set; }
 
     // Navigation
     public virtual User User { get; set; } = null!;

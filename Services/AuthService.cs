@@ -197,4 +197,85 @@ public class AuthService : IAuthService
             _logger.LogError($"Error updating last login: {ex.Message}");
         }
     }
+
+    public async Task<(string rawToken, PersonalAccessToken dbToken)> GenerateApiTokenAsync(int userId, string name)
+    {
+        // 1. Generate secure random string
+        var rawToken = "sc_" + Convert.ToBase64String(RandomNumberGenerator.GetBytes(32))
+            .Replace("+", "-")
+            .Replace("/", "_")
+            .Replace("=", "");
+
+        // 2. Hash it for DB storage
+        var tokenHash = ComputeSha256Hash(rawToken);
+
+        var dbToken = new PersonalAccessToken
+        {
+            UserId = userId,
+            Name = string.IsNullOrWhiteSpace(name) ? "API Token" : name,
+            TokenHash = tokenHash,
+            CreatedAt = DateTime.UtcNow
+        };
+
+        _context.PersonalAccessTokens.Add(dbToken);
+        await _context.SaveChangesAsync();
+
+        return (rawToken, dbToken);
+    }
+
+    public async Task<int?> ValidateApiTokenAsync(string rawToken)
+    {
+        if (string.IsNullOrWhiteSpace(rawToken))
+            return null;
+
+        var tokenHash = ComputeSha256Hash(rawToken);
+
+        var dbToken = await _context.PersonalAccessTokens
+            .FirstOrDefaultAsync(t => t.TokenHash == tokenHash);
+
+        if (dbToken == null)
+            return null;
+
+        // Update LastUsedAt in background (fire & forget style)
+        dbToken.LastUsedAt = DateTime.UtcNow;
+        _context.PersonalAccessTokens.Update(dbToken);
+        await _context.SaveChangesAsync();
+
+        return dbToken.UserId;
+    }
+
+    public async Task<List<PersonalAccessToken>> GetUserApiTokensAsync(int userId)
+    {
+        return await _context.PersonalAccessTokens
+            .Where(t => t.UserId == userId)
+            .OrderByDescending(t => t.CreatedAt)
+            .ToListAsync();
+    }
+
+    public async Task<bool> RevokeApiTokenAsync(int tokenId, int userId)
+    {
+        var token = await _context.PersonalAccessTokens
+            .FirstOrDefaultAsync(t => t.Id == tokenId && t.UserId == userId);
+
+        if (token == null)
+            return false;
+
+        _context.PersonalAccessTokens.Remove(token);
+        await _context.SaveChangesAsync();
+        return true;
+    }
+
+    private static string ComputeSha256Hash(string rawData)
+    {
+        using (SHA256 sha256Hash = SHA256.Create())
+        {
+            byte[] bytes = sha256Hash.ComputeHash(System.Text.Encoding.UTF8.GetBytes(rawData));
+            var builder = new System.Text.StringBuilder();
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                builder.Append(bytes[i].ToString("x2"));
+            }
+            return builder.ToString();
+        }
+    }
 }

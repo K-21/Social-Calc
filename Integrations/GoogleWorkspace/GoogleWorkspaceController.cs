@@ -10,18 +10,18 @@ namespace SocialCalc.Web.Integrations.GoogleWorkspace
     {
         private readonly IExcelService _excelService;
         private readonly ISheetService _sheetService;
-        private readonly IConfiguration _configuration;
+        private readonly IAuthService _authService;
         private readonly ILogger<GoogleWorkspaceController> _logger;
 
         public GoogleWorkspaceController(
             IExcelService excelService,
             ISheetService sheetService,
-            IConfiguration configuration,
+            IAuthService authService,
             ILogger<GoogleWorkspaceController> logger)
         {
             _excelService = excelService;
             _sheetService = sheetService;
-            _configuration = configuration;
+            _authService = authService;
             _logger = logger;
         }
 
@@ -31,11 +31,11 @@ namespace SocialCalc.Web.Integrations.GoogleWorkspace
         {
             try
             {
-                // 1. Authenticate Request
-                var configuredApiKey = _configuration["GoogleWorkspace:ApiKey"];
-                if (string.IsNullOrEmpty(configuredApiKey) || apiKey != configuredApiKey)
+                // 1. Authenticate Request using Database PAT
+                var userId = await _authService.ValidateApiTokenAsync(apiKey);
+                if (userId == null)
                 {
-                    _logger.LogWarning("Unauthorized Google Workspace import attempt.");
+                    _logger.LogWarning("Unauthorized Google Workspace import attempt. Invalid or revoked API Key.");
                     return Unauthorized(new { success = false, message = "Invalid API Key" });
                 }
 
@@ -66,24 +66,15 @@ namespace SocialCalc.Web.Integrations.GoogleWorkspace
                 using var stream = new MemoryStream(csvBytes);
                 var fileName = string.IsNullOrWhiteSpace(request.SheetName) ? "ImportedSheet.csv" : $"{request.SheetName}.csv";
 
-                // Determine user - either link to a specific system user or default admin.
-                // For this implementation, we will use a configured default user ID or first user.
-                var defaultUserIdStr = _configuration["GoogleWorkspace:DefaultUserId"];
-                int userId = 1; // Fallback
-                if (int.TryParse(defaultUserIdStr, out int parsedId))
-                {
-                    userId = parsedId;
-                }
-
                 // 5. Use existing ExcelService to process the CSV
-                var sheet = await _excelService.ImportFromExcelAsync(stream, userId, fileName);
+                var sheet = await _excelService.ImportFromExcelAsync(stream, userId.Value, fileName);
                 if (sheet == null)
                 {
                     return StatusCode(500, new { success = false, message = "Error processing data" });
                 }
 
                 // 6. Save the generated SocialCalc sheet to DB
-                var savedSheet = await _sheetService.SaveSheetAsync(userId, sheet.FileName, sheet.Data);
+                var savedSheet = await _sheetService.SaveSheetAsync(userId.Value, sheet.FileName, sheet.Data);
                 if (savedSheet == null)
                 {
                     return StatusCode(500, new { success = false, message = "Error saving imported sheet" });

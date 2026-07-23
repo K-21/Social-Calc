@@ -13,8 +13,12 @@ public interface IAuthService
     Task<string> GeneratePasswordResetTokenAsync(User user);
     Task<bool> ResetPasswordAsync(string token, string newPassword);
     Task UpdateLastLoginAsync(User user);
+    
+    Task<(string rawToken, PersonalAccessToken dbToken)> GenerateApiTokenAsync(int userId, string name);
+    Task<int?> ValidateApiTokenAsync(string rawToken);
+    Task<List<PersonalAccessToken>> GetUserApiTokensAsync(int userId);
+    Task<bool> RevokeApiTokenAsync(int tokenId, int userId);
 }
-
 
 /// <summary>
 /// Sheet service interface - handles sheet operations

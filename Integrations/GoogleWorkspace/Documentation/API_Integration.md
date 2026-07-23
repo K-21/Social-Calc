@@ -1,0 +1,41 @@
+# API Integration Documentation
+
+## Overview
+The Google Apps Script Add-on communicates with the SocialCalc ASP.NET Core backend to export data from Google Sheets into the SocialCalc database.
+
+## Authentication
+The Add-on authenticates requests to the ASP.NET Core API using an API Key.
+- **Header:** `X-Api-Key`
+- **Value:** The secret key configured in `Config.gs` and matched on the ASP.NET Core backend.
+
+## Endpoint: Import from Google Workspace
+- **URL:** `POST /api/gworkspace/import`
+- **Content-Type:** `application/json`
+
+### Request Payload Example
+```json
+{
+  "sheetName": "My Budget",
+  "data": [
+    ["Header 1", "Header 2"],
+    ["Value 1", "Value 2"]
+  ],
+  "rowCount": 2,
+  "colCount": 2
+}
+```
+
+### Response Example
+```json
+{
+  "success": true,
+  "id": 123,
+  "message": "Sheet imported successfully"
+}
+```
+
+### Backend Processing
+1. The ASP.NET Core backend receives the JSON payload.
+2. It validates the `X-Api-Key` header.
+3. It maps the raw 2D array data (`data`) into the SocialCalc format (`sheetArr`).
+4. It saves the newly mapped spreadsheet into the existing database and returns the generated `id`.
